@@ -22,5 +22,5 @@ CatalogService đóng vai trò cốt lõi trong **Checkout Saga State Machine** 
 |:---|:---|:---|:---|
 | `StockReservedEvent` | Giữ kho thành công cho đơn hàng | `OrderId`, `ReservationId`, `ReservedAt` | `CommerceService`, `WalletService` (Kích hoạt trừ tiền ví). |
 | `StockReservationFailedEvent` | Hết hàng hoặc không đủ tồn kho | `OrderId`, `Reason`, `FailedAt` | `CommerceService` (Hủy đơn hàng ngay). |
-| `StockReleasedEvent` | Nhả kho hoàn tất khi bù trừ thất bại | `OrderId`, `ReleasedItems`, `ReleasedAt` | `CommerceService`, `AuditService`. |
-| `ProductPriceChangedEvent` | Seller cập nhật giá bán mới | `ProductId`, `OldPrice`, `NewPrice`, `UpdatedAt` | `NotificationService` (Báo cho user đã lưu giỏ/yêu thích), `AuditService`. |
+| `StockReleasedEvent` | Nhả kho hoàn tất khi bù trừ thất bại | `OrderId`, `ReleasedItems`, `ReleasedAt` | `CommerceService`, `LogService`. |
+| `ProductPriceChangedEvent` | Seller cập nhật giá bán mới | `ProductId`, `OldPrice`, `NewPrice`, `UpdatedAt` | `NotificationService` (Báo cho user đã lưu giỏ/yêu thích), `LogService`. |
