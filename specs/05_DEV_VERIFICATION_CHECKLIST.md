@@ -22,6 +22,6 @@ dotnet run --project Catalog.Api
 
 - [ ] **Biên dịch thành công 100%**: Không lỗi cảnh báo nghiêm trọng.
 - [ ] **Không vi phạm rào chắn**: Không dùng Repository Pattern bọc ngoài EF Core.
-- [ ] **Port & Database**: Lắng nghe đúng port `8002`, kết nối `category_db` trên port `5433`.
+- [ ] **Port & Database**: Lắng nghe đúng port `8002`, kết nối `category_db` trên port `5434` (Password: `MatkhaucuaTui123@`).
 - [ ] **Kiểm tra Concurrency**: Thao tác trừ kho ảo phải đảm bảo chống overselling.
 - [ ] **Git Status**: Không commit file rác (`bin/`, `obj/`, `.idea/`, `.env`).

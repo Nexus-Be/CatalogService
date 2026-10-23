@@ -38,8 +38,8 @@
 ## 2. QUY CHUẨN CƠ SỞ DỮ LIỆU & EF CORE
 
 - Engine: PostgreSQL.
-- Database: `category_db` tại port `5433`.
-- Chuỗi kết nối: `Host=localhost;Port=5433;Database=category_db;Username=postgres;Password=...`.
+- Database: `category_db` tại port `5434`.
+- Chuỗi kết nối: `Host=localhost;Port=5434;Database=category_db;Username=postgres;Password=MatkhaucuaTui123@`.
 - Tên bảng: `categories`, `products`, `inventories`.
 - **Concurrency Token**: Cấu hình thuộc tính Version / RowVersion (hoặc `xmin` trên PostgreSQL) trên bảng `inventories` để ngăn chặn lỗi bán vượt tồn kho (race condition / overselling).
 - **No Repository Pattern**: Tầng Application tương tác trực tiếp với `CatalogDbContext`.

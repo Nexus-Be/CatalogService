@@ -8,7 +8,7 @@ Tài liệu này là **Bộ Chỉ Dẫn & Đặc Tả Kỹ Thuật (Spec Kit)** 
 
 | File Đặc Tả | Trọng Tâm Nội Dung |
 |:---|:---|
-| [00_AGENT_MISSION_GUARDRAILS.md](00_AGENT_MISSION_GUARDRAILS.md) | Bounded Context, Port `8002`, DB `category_db` (`5433`), các điều cấm kỵ cốt lõi. |
+| [00_AGENT_MISSION_GUARDRAILS.md](00_AGENT_MISSION_GUARDRAILS.md) | Bounded Context, Port `8002`, DB `category_db` (`5434`), các điều cấm kỵ cốt lõi. |
 | [01_CLEAN_ARCHITECTURE_LAYERS.md](01_CLEAN_ARCHITECTURE_LAYERS.md) | Cấu trúc 4 tầng Clean Architecture (`.Api`, `.Application`, `.Domain`, `.Infrastructure`), luồng phụ thuộc. |
 | [02_API_GRPC_CONTRACTS.md](02_API_GRPC_CONTRACTS.md) | Hợp đồng gRPC `CatalogApi` trong `shop.proto`, Request/Response messages, phân trang, mã lỗi. |
 | [03_EVENT_MESSAGING.md](03_EVENT_MESSAGING.md) | Sự kiện bất đồng bộ RabbitMQ + MassTransit 8.4.1 (Giữ kho ảo trong Checkout Saga, nhả kho khi bù trừ). |
@@ -21,6 +21,6 @@ Tài liệu này là **Bộ Chỉ Dẫn & Đặc Tả Kỹ Thuật (Spec Kit)** 
 
 - **Ngôn ngữ & Runtime**: .NET 8 (C# 12).
 - **Cổng gRPC Server**: Port `8002` (Không có cổng HTTP REST riêng, mọi REST call đều qua ApiGateway Port `8000`).
-- **Cơ Sở Dữ Liệu**: PostgreSQL (Port `5433`, Database: `category_db`).
+- **Cơ Sở Dữ Liệu**: PostgreSQL (Port `5434`, Database: `category_db`, Mật khẩu: `MatkhaucuaTui123@`).
 - **Message Broker**: RabbitMQ (Port `5672`, Virtual Host: `/`).
 - **Đơn Vị Tiền Tệ Mặc Định**: `VND`. Giá lưu chuỗi decimal chuẩn 2 chữ số thập phân (ví dụ: `"1250000.00"`).

@@ -24,9 +24,9 @@
    - `CatalogService` chỉ quản lý số lượng tồn kho ảo có sẵn để bán trên sàn thương mại điện tử (`Available`).
    - Kho bãi vật lý thực tế (kích thước, trọng lượng kiện hàng, vị trí giá kệ, mã tracking) thuộc về `FulfillmentService`. Tuyệt đối không đưa logic tính phí ship hay theo dõi vận đơn vào CatalogService.
 
-3. **TUYỆT ĐỐI KHÔNG THAY ĐỔI CỔNG 8002 VÀ DATABASE 5433**:
+3. **TUYỆT ĐỐI KHÔNG THAY ĐỔI CỔNG 8002 VÀ DATABASE 5434**:
    - Service gRPC chạy tại `http://localhost:8002`.
-   - Chuỗi kết nối DB trỏ tới `localhost:5433/category_db`.
+   - Chuỗi kết nối DB trỏ tới `localhost:5434/category_db` với mật khẩu mặc định `MatkhaucuaTui123@`.
 
 4. **TUYỆT ĐỐI KHÔNG TỰ Ý SỬA PROTOBUF MÀ KHÔNG ĐỒNG BỘ GATEWAY**:
    - RPC methods và message formats phải khớp 100% với `Contracts/shop.proto` tại ApiGateway.
