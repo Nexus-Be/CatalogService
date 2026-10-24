@@ -9,6 +9,7 @@ public static class CatalogSeedData
     {
         var electronicsId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         var fashionId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var seedDate = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
         modelBuilder.Entity<Category>().HasData(
             new Category
@@ -19,8 +20,8 @@ public static class CatalogSeedData
                 Level = 1,
                 SortOrder = 1,
                 IsDisabled = false,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate,
                 IsDeleted = false
             },
             new Category
@@ -31,8 +32,8 @@ public static class CatalogSeedData
                 Level = 1,
                 SortOrder = 2,
                 IsDisabled = false,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate,
                 IsDeleted = false
             }
         );
