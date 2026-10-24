@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Catalog.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261024081313_InitialCatalogSchema")]
+    [Migration("20261024103127_InitialCatalogSchema")]
     partial class InitialCatalogSchema
     {
         /// <inheritdoc />
@@ -144,29 +144,71 @@ namespace Catalog.Infrastructure.Migrations
                     b.HasData(
                         new
                         {
-                            Id = new Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                            Id = new Guid("10000000-0000-0000-0000-000000000001"),
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            Description = "Điện thoại, máy tính, phụ kiện công nghệ",
+                            Description = "Điện thoại, máy tính, tai nghe và phụ kiện thông minh",
                             IsDeleted = false,
                             IsDisabled = false,
                             Level = (short)1,
-                            Name = "Thiết Bị Điện Tử",
+                            Name = "Thiết Bị Điện Tử & Công Nghệ",
                             SortOrder = 1,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         },
                         new
                         {
-                            Id = new Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+                            Id = new Guid("20000000-0000-0000-0000-000000000002"),
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            Description = "Quần áo, giày dép, túi xách",
+                            Description = "Quần áo, áo khoác, phụ kiện thời trang unisex",
                             IsDeleted = false,
                             IsDisabled = false,
                             Level = (short)1,
                             Name = "Thời Trang & Phụ Kiện",
                             SortOrder = 2,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("30000000-0000-0000-0000-000000000003"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Description = "Thiết bị gia dụng tiện ích và đồ dùng gia đình",
+                            IsDeleted = false,
+                            IsDisabled = false,
+                            Level = (short)1,
+                            Name = "Nhà Cửa & Đời Sống",
+                            SortOrder = 3,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("40000000-0000-0000-0000-000000000004"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Description = "Dụng cụ thể thao, xe đạp và đồ bảo hộ dã ngoại",
+                            IsDeleted = false,
+                            IsDisabled = false,
+                            Level = (short)1,
+                            Name = "Thể Thao & Dã Ngoại",
+                            SortOrder = 4,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("50000000-0000-0000-0000-000000000005"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Description = "Sách công nghệ thông tin, kiến trúc phần mềm và văn hóa doanh nghiệp",
+                            IsDeleted = false,
+                            IsDisabled = false,
+                            Level = (short)1,
+                            Name = "Sách & Tri Thức",
+                            SortOrder = 5,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         });
@@ -237,6 +279,98 @@ namespace Catalog.Infrastructure.Migrations
                     b.HasIndex("CategoryId");
 
                     b.ToTable("Products");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("11000000-0000-0000-0000-000000000001"),
+                            Brand = "Nexus",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000001"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Description = "Flagship phone with OLED 120Hz display, 50MP triple camera system and 5000mAh battery.",
+                            IsDeleted = false,
+                            Name = "Smartphone Nexus X Pro 256GB",
+                            PublishedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            SaleType = "Regular",
+                            SellerId = new Guid("cccccccc-3333-3333-3333-333333333333"),
+                            Specifications = "{\"ram\":\"12GB\",\"storage\":\"256GB\",\"chipset\":\"Snapdragon 8 Gen 3\"}",
+                            Status = "Active",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("22000000-0000-0000-0000-000000000002"),
+                            Brand = "Nexus Wear",
+                            CategoryId = new Guid("20000000-0000-0000-0000-000000000002"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Description = "Áo hoodie chất liệu cotton 100% thoáng mát, form rộng unisex phong cách trẻ trung năng động.",
+                            IsDeleted = false,
+                            Name = "Áo Hoodie Nexus Unisex Cotton",
+                            PublishedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            SaleType = "Regular",
+                            SellerId = new Guid("cccccccc-3333-3333-3333-333333333333"),
+                            Specifications = "{\"material\":\"Cotton 100%\",\"color\":\"Black\",\"size\":\"L\"}",
+                            Status = "Active",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("33000000-0000-0000-0000-000000000003"),
+                            Brand = "Nexus Home",
+                            CategoryId = new Guid("30000000-0000-0000-0000-000000000003"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Description = "Ấm đun nước siêu tốc inox 304 giữ nhiệt và điều khiển nhiệt độ thông minh qua app.",
+                            IsDeleted = false,
+                            Name = "Ấm Siêu Tốc Thông Minh Nexus 1.7L",
+                            PublishedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            SaleType = "Regular",
+                            SellerId = new Guid("cccccccc-3333-3333-3333-333333333333"),
+                            Specifications = "{\"capacity\":\"1.7L\",\"power\":\"1800W\",\"material\":\"Inox 304\"}",
+                            Status = "Active",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("44000000-0000-0000-0000-000000000004"),
+                            Brand = "Nexus Sport",
+                            CategoryId = new Guid("40000000-0000-0000-0000-000000000004"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Description = "Mũ bảo hiểm khí động học trọng lượng siêu nhẹ chuẩn an toàn quốc tế CE EN 1078.",
+                            IsDeleted = false,
+                            Name = "Mũ Bảo Hiểm Xe Đạp Nexus Aero",
+                            PublishedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            SaleType = "Auction",
+                            SellerId = new Guid("cccccccc-3333-3333-3333-333333333333"),
+                            Specifications = "{\"weight\":\"220g\",\"size\":\"M (54-58cm)\",\"color\":\"Race Red\"}",
+                            Status = "Active",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("55000000-0000-0000-0000-000000000005"),
+                            Brand = "Nexus Press",
+                            CategoryId = new Guid("50000000-0000-0000-0000-000000000005"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Description = "Cẩm nang chuyên sâu về kiến trúc phần mềm hướng miền và thiết kế hệ thống phân tán chịu tải cao.",
+                            IsDeleted = false,
+                            Name = "Clean Architecture trong Microservices",
+                            PublishedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            SaleType = "Regular",
+                            SellerId = new Guid("cccccccc-3333-3333-3333-333333333333"),
+                            Specifications = "{\"pages\":420,\"publisher\":\"Nexus Press\",\"language\":\"Vietnamese\"}",
+                            Status = "Active",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        });
                 });
 
             modelBuilder.Entity("Catalog.Domain.Entities.ProductImage", b =>
@@ -285,6 +419,73 @@ namespace Catalog.Infrastructure.Migrations
                     b.HasIndex("VariantId");
 
                     b.ToTable("ProductImages");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("11200000-0000-0000-0000-000000000001"),
+                            AltText = "Smartphone Nexus X Pro 256GB Black",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsActive = true,
+                            IsDeleted = false,
+                            ProductId = new Guid("11000000-0000-0000-0000-000000000001"),
+                            SortOrder = (short)1,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Url = "https://images.nexus.local/products/phone-black.png",
+                            VariantId = new Guid("11100000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("22200000-0000-0000-0000-000000000002"),
+                            AltText = "Áo Hoodie Nexus Unisex Cotton Đen",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsActive = true,
+                            IsDeleted = false,
+                            ProductId = new Guid("22000000-0000-0000-0000-000000000002"),
+                            SortOrder = (short)1,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Url = "https://images.nexus.local/products/hoodie-black.png",
+                            VariantId = new Guid("22100000-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            Id = new Guid("33200000-0000-0000-0000-000000000003"),
+                            AltText = "Ấm Siêu Tốc Thông Minh Nexus 1.7L Trắng",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsActive = true,
+                            IsDeleted = false,
+                            ProductId = new Guid("33000000-0000-0000-0000-000000000003"),
+                            SortOrder = (short)1,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Url = "https://images.nexus.local/products/kettle-white.png",
+                            VariantId = new Guid("33100000-0000-0000-0000-000000000003")
+                        },
+                        new
+                        {
+                            Id = new Guid("44200000-0000-0000-0000-000000000004"),
+                            AltText = "Mũ Bảo Hiểm Xe Đạp Nexus Aero Đỏ",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsActive = true,
+                            IsDeleted = false,
+                            ProductId = new Guid("44000000-0000-0000-0000-000000000004"),
+                            SortOrder = (short)1,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Url = "https://images.nexus.local/products/helmet-red.png",
+                            VariantId = new Guid("44100000-0000-0000-0000-000000000004")
+                        },
+                        new
+                        {
+                            Id = new Guid("55200000-0000-0000-0000-000000000005"),
+                            AltText = "Clean Architecture trong Microservices Bìa Cứng",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsActive = true,
+                            IsDeleted = false,
+                            ProductId = new Guid("55000000-0000-0000-0000-000000000005"),
+                            SortOrder = (short)1,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Url = "https://images.nexus.local/products/clean-arch-book.png",
+                            VariantId = new Guid("55100000-0000-0000-0000-000000000005")
+                        });
                 });
 
             modelBuilder.Entity("Catalog.Domain.Entities.ProductRatingStats", b =>
@@ -324,6 +525,63 @@ namespace Catalog.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("ProductRatingStats");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("11300000-0000-0000-0000-000000000001"),
+                            AvgRating = 5.0m,
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsDeleted = false,
+                            ProductId = new Guid("11000000-0000-0000-0000-000000000001"),
+                            ReviewCount = 10,
+                            StarSum = 50,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("22300000-0000-0000-0000-000000000002"),
+                            AvgRating = 4.8m,
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsDeleted = false,
+                            ProductId = new Guid("22000000-0000-0000-0000-000000000002"),
+                            ReviewCount = 5,
+                            StarSum = 24,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("33300000-0000-0000-0000-000000000003"),
+                            AvgRating = 5.0m,
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsDeleted = false,
+                            ProductId = new Guid("33000000-0000-0000-0000-000000000003"),
+                            ReviewCount = 8,
+                            StarSum = 40,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("44300000-0000-0000-0000-000000000004"),
+                            AvgRating = 5.0m,
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsDeleted = false,
+                            ProductId = new Guid("44000000-0000-0000-0000-000000000004"),
+                            ReviewCount = 3,
+                            StarSum = 15,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("55300000-0000-0000-0000-000000000005"),
+                            AvgRating = 5.0m,
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsDeleted = false,
+                            ProductId = new Guid("55000000-0000-0000-0000-000000000005"),
+                            ReviewCount = 10,
+                            StarSum = 50,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        });
                 });
 
             modelBuilder.Entity("Catalog.Domain.Entities.ProductReview", b =>
@@ -440,6 +698,93 @@ namespace Catalog.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("ProductVariants");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("11100000-0000-0000-0000-000000000001"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Currency = "VND",
+                            HasOrder = true,
+                            IsActive = true,
+                            IsDeleted = false,
+                            Name = "Smartphone Nexus X Pro 256GB Midnight Black",
+                            Price = 15000000m,
+                            ProductId = new Guid("11000000-0000-0000-0000-000000000001"),
+                            SkuCode = "NX-PHONE-256",
+                            Status = "Active",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("22100000-0000-0000-0000-000000000002"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Currency = "VND",
+                            HasOrder = true,
+                            IsActive = true,
+                            IsDeleted = false,
+                            Name = "Áo Hoodie Nexus Unisex Cotton - Đen / Size L",
+                            Price = 450000m,
+                            ProductId = new Guid("22000000-0000-0000-0000-000000000002"),
+                            SkuCode = "NX-HOODIE-L",
+                            Status = "Active",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("33100000-0000-0000-0000-000000000003"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Currency = "VND",
+                            HasOrder = true,
+                            IsActive = true,
+                            IsDeleted = false,
+                            Name = "Ấm Siêu Tốc Thông Minh Nexus 1.7L Trắng Tinh Khôi",
+                            Price = 850000m,
+                            ProductId = new Guid("33000000-0000-0000-0000-000000000003"),
+                            SkuCode = "NX-KETTLE-17",
+                            Status = "Active",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("44100000-0000-0000-0000-000000000004"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Currency = "VND",
+                            HasOrder = false,
+                            IsActive = true,
+                            IsDeleted = false,
+                            Name = "Mũ Bảo Hiểm Xe Đạp Nexus Aero - Đỏ / Size M",
+                            Price = 620000m,
+                            ProductId = new Guid("44000000-0000-0000-0000-000000000004"),
+                            SkuCode = "NX-HELMET-M",
+                            Status = "Active",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("55100000-0000-0000-0000-000000000005"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Currency = "VND",
+                            HasOrder = false,
+                            IsActive = true,
+                            IsDeleted = false,
+                            Name = "Clean Architecture trong Microservices (Bìa Cứng)",
+                            Price = 350000m,
+                            ProductId = new Guid("55000000-0000-0000-0000-000000000005"),
+                            SkuCode = "NX-BOOK-ARCH",
+                            Status = "Active",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
+                        });
                 });
 
             modelBuilder.Entity("Catalog.Domain.Entities.ProductVariantAttribute", b =>

@@ -25,7 +25,7 @@ public class AppDbContext : DbContext, ICatalogDbContext
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
-        Seeds.CatalogSeedData.SeedCategories(modelBuilder);
+        Seeds.CatalogSeedData.SeedAll(modelBuilder);
 
         // MassTransit Transactional Outbox entities
         modelBuilder.AddInboxStateEntity();
