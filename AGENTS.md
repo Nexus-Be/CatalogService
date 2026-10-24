@@ -42,3 +42,79 @@ This project is indexed by GitNexus as **CatalogService** (304 symbols, 358 rela
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+---
+
+# QUY CHUẨN VẬN HÀNH DÀNH CHO AI CODING AGENTS (CATALOG SERVICE)
+
+---
+
+## 🛑 NGUYÊN TẮC 1: BẮT BUỘC LẬP KẾ HOẠCH TRƯỚC KHI HÀNH ĐỘNG (PLAN-FIRST RULE)
+
+Mọi AI Agent khi nhận nhiệm vụ kỹ thuật tại CatalogService **BẮT BUỘC PHẢI LẬP VÀ TRÌNH BÀY PLAN** trước khi thực hiện bất kỳ hành động sửa đổi mã nguồn, thêm/xóa file, refactor, tạo migration database hay thay đổi cấu hình nào.
+
+Một Plan chuẩn bắt buộc phải có:
+1. **Mục tiêu (Objective)**: Tóm tắt chính xác điều cần làm.
+2. **Context & Files cần đọc**: Liệt kê các file nội bộ của CatalogService cần đọc theo đúng ma trận đọc file tại Nguyên tắc 3.
+3. **Phân tích rủi ro & Phạm vi ảnh hưởng (Impact Analysis)**:
+   - Dùng GitNexus `impact` đánh giá blast radius các symbol bị ảnh hưởng.
+   - Cảnh báo rõ nếu mức độ rủi ro là HIGH hoặc CRITICAL.
+4. **Checklist các bước thực hiện (Step-by-Step Implementation)**: Từng bước logic, chi tiết.
+5. **Kế hoạch kiểm chứng (Verification)**: `dotnet build` và `dotnet test` tương ứng.
+
+---
+
+## 🧭 NGUYÊN TẮC 2: QUY TẮC PHẠM VI NỘI BỘ (INWARD-ONLY / SELF-CONTAINED)
+
+CatalogService là một Git Repository độc lập (`CatalogService.git`):
+- **TUYỆT ĐỐI CHỈ ĐƯỢC trỏ tới các tài nguyên nội bộ của CatalogService**.
+- **TUYỆT ĐỐI KHÔNG ĐƯỢC trỏ ngược ra ngoài Root** (`../../../docs/...`) hay sang các Service khác (`../../ApiGateway/...`).
+- Toàn bộ tài liệu, hướng dẫn và cấu hình trong repo này phải 100% tự cung tự cấp (Self-contained).
+
+---
+
+## 📚 NGUYÊN TẮC 3: DANH MỤC FILE NỘI BỘ BẮT BUỘC PHẢI ĐỌC TẠI CATALOG SERVICE
+
+Khi bắt đầu làm việc tại CatalogService, AI Agent **BẮT BUỘC PHẢI ĐỌC** các file nội bộ sau theo thứ tự:
+1. `specs/00_AGENT_MISSION_GUARDRAILS.md`: Bounded context danh mục, sản phẩm, kho ảo, port `8002`, DB `5434` (`category_db`).
+2. `specs/01_CLEAN_ARCHITECTURE_LAYERS.md`: Cấu trúc 4 tầng Clean Architecture, No-Repository pattern over EF Core.
+3. `specs/02_API_GRPC_CONTRACTS.md`: Hợp đồng gRPC Server (`CatalogApi`: Categories, Products, Seller Inventory).
+4. `specs/03_EVENT_MESSAGING.md`: Sự kiện RabbitMQ (`StockReservedEvent`, `StockReleasedEvent`...).
+5. `specs/04_DATA_PERSISTENCE.md`: Schema PostgreSQL (`Categories`, `Products`, `Inventories`).
+6. `specs/05_DEV_VERIFICATION_CHECKLIST.md`: Lệnh build & test kiểm chứng service.
+
+---
+
+## 🔒 NGUYÊN TẮC 4: RÀO CHẮN BẤT BIẾN TẠI CATALOG SERVICE
+
+1. **TUYỆT ĐỐI KHÔNG DÙNG REPOSITORY PATTERN BỌC NGOÀI EF CORE**: Sử dụng trực tiếp `CatalogDbContext` và `DbSet<T>` (hoặc interface `ICatalogDbContext`) trong tầng Application. Cấm tạo `IProductRepository`, `ICategoryRepository`, `UnitOfWork`.
+2. **KHÔNG NHẦM LẪN KHO ẢO (CATALOG) VỚI KHO VẬT LÝ (FULFILLMENT)**: CatalogService chỉ quản lý tồn kho ảo sẵn sàng bán (`Available`). Logic vận chuyển, kiện hàng, mã tracking thuộc về FulfillmentService.
+3. **CẤU HÌNH PORT 8002 VÀ DATABASE 5434 LÀ BẤT BIẾN**.
+4. **HỢP ĐỒNG PROTOBUF ĐỒNG BỘ 100% VỚI GATEWAY**.
+
+---
+
+## 💬 NGUYÊN TẮC 5: QUY CHUẨN THÔNG BÁO LỖI TOÀN HỆ THỐNG (MANDATORY ERROR RULES)
+
+Tất cả các thông báo lỗi (Error Messages, Exceptions, ProblemDetails, Validation Errors, Response Details) **BẮT BUỘC** phải tuân theo 3 nguyên tắc sau:
+1. **Ngôn ngữ (100% English)**: Toàn bộ thông báo lỗi phải được viết bằng tiếng Anh. Tuyệt đối không dùng tiếng Việt trong chuỗi thông báo lỗi trả về cho client.
+2. **Quy cách viết hoa (Sentence case)**: Viết hoa duy nhất chữ cái đầu câu, các từ tiếp theo viết thường (ngoại trừ tên riêng, từ viết tắt hoặc định danh kỹ thuật như `ID`, `OTP`, `JWT`, `URL`, `UUID`, `Email`...).
+   - ✅ Đúng: `"Product not found in the system."`
+   - ✅ Đúng: `"Insufficient stock available for the requested product."`
+   - ❌ Sai: `"Sản phẩm không tồn tại"` (Không dùng tiếng Việt)
+   - ❌ Sai: `"invalid product id"` (Chữ cái đầu không viết hoa)
+   - ❌ Sai: `"INVALID PRODUCT ID"` (Cấm viết hoa toàn bộ)
+   - ❌ Sai: `"Invalid Product Id Provided"` (Không dùng Title Case)
+3. **Mã lỗi (Error Codes — SCREAMING_SNAKE_CASE)**: Mã lỗi luôn viết hoa toàn bộ và nối bằng dấu gạch dưới:
+   - Ví dụ: `PRODUCT_NOT_FOUND`, `CATEGORY_NOT_FOUND`, `INSUFFICIENT_STOCK`, `VAL_INVALID_INPUT`, `UNAUTHORIZED`, `FORBIDDEN`.
+
+---
+
+## 🎯 NGUYÊN TẮC 6: ĐIỀU KIỆN HOÀN THÀNH NHIỆM VỤ (DEFINITION OF DONE)
+
+Một task tại CatalogService chỉ hoàn tất khi:
+- [ ] Đã lập Plan chi tiết trước khi thực hiện.
+- [ ] Không chứa bất kỳ liên kết trỏ ngược ra ngoài CatalogService.
+- [ ] `dotnet build CatalogService.sln -c Release` thành công 100% (0 error).
+- [ ] `dotnet test CatalogService.sln -c Release` vượt qua 100% các bài test.
+- [ ] Trạng thái Git sạch, không commit file rác (`bin/`, `obj/`, `.vs/`, `.idea/`).
