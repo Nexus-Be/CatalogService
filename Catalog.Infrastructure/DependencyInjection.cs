@@ -13,6 +13,8 @@ public static class DependencyInjection
     {
         var rawConnection = configuration.GetConnectionString("DefaultConnection")
             ?? configuration["CONNECTION_STRING"]
+            ?? configuration["CATALOG_CONNECTION_STRING"]
+            ?? configuration["CATALOG_DB_CONNECTION"]
             ?? "Host=localhost;Port=5434;Database=category_db;Username=postgres;Password=postgres";
         var connectionString = NormalizeConnectionString(rawConnection);
 
