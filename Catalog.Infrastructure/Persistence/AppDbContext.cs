@@ -33,10 +33,3 @@ public class AppDbContext : DbContext, ICatalogDbContext
         modelBuilder.AddOutboxStateEntity();
     }
 }
-
-public class CatalogDbContext : AppDbContext
-{
-    public CatalogDbContext(DbContextOptions<AppDbContext> options) : base(options)
-    {
-    }
-}
