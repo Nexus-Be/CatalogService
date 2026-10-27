@@ -1,12 +1,15 @@
+using System.Text.Json.Serialization;
+using Catalog.Api.Extensions;
 using Catalog.Api.Middleware;
-using Catalog.Api.Mock;
-using Catalog.Api.Responses;
 using Catalog.Application;
 using Catalog.Infrastructure;
 using Catalog.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 0. Observability / OpenTelemetry Tracing & Metrics
+builder.Services.AddServiceObservability(builder.Configuration, "catalog-service");
 
 // Cấu hình Kestrel chỉ định HTTP/1 & HTTP/2
 builder.WebHost.ConfigureKestrel(options =>
@@ -21,27 +24,21 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
-// 2. Mock Catalog Services & ApiResponseFactory (theo guild agent)
-builder.Services.AddHttpContextAccessor();
-builder.Services.AddSingleton<MockCatalogStore>();
-builder.Services.AddScoped<IApiResponseFactory, ApiResponseFactory>();
-
-// 3. Controllers & Swagger
-builder.Services.AddControllers();
+// 2. Swagger / OpenAPI & JSON Enum Conversion
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
-    options.SerializerOptions.Converters.Add(new Catalog.Api.Common.Converters.PascalCaseJsonStringEnumConverter(allowIntegerValues: false));
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(options =>
 {
-    options.JsonSerializerOptions.Converters.Add(new Catalog.Api.Common.Converters.PascalCaseJsonStringEnumConverter(allowIntegerValues: false));
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 
 var app = builder.Build();
 
-// 4. Global Exception Handler Middleware
+// 3. Global Exception Handler Middleware
 app.UseGlobalExceptionHandler();
 
 if (app.Environment.IsDevelopment())
@@ -67,10 +64,8 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// 4. Standard Health & Test Endpoint
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", service = "Catalog.Api" }));
-
-// 5. Map Controller Routes
-app.MapControllers();
 
 app.Run();
 

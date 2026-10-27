@@ -8,7 +8,7 @@
 
 services:
 
-  # 1. Ứng dụng Catalog Service gRPC (Port 8002)
+  # 1. Ứng dụng Catalog Service RESTful Web API (Port 8002)
   catalog-service:
     build:
       context: .
