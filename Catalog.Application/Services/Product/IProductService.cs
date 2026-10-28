@@ -16,6 +16,11 @@ public interface IProductService
     Task<CheckVariantStatusResponse> CheckVariantStatusBatchAsync(CheckVariantStatusRequest request, CancellationToken cancellationToken = default);
     Task<ProductOperationResult<ProductDto>> CreateAsync(CreateProductCommand command, CancellationToken cancellationToken = default);
     Task<ProductOperationResult<ProductDto>> UpdateAsync(UpdateProductCommand command, CancellationToken cancellationToken = default);
+    Task<ProductOperationResult<ProductDto>> ChangeProductStatusAsync(
+        Guid productId,
+        Guid currentSellerId,
+        ChangeProductStatusRequest request,
+        CancellationToken cancellationToken = default);
     Task<ProductOperationResult<bool>> SoftDeleteAsync(Guid id, Guid currentSellerId, CancellationToken cancellationToken = default);
     Task<ProductOperationResult<ProductImageDto>> AddProductImageAsync(
         Guid productId,

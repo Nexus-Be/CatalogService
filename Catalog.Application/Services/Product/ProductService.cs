@@ -462,6 +462,94 @@ public sealed class ProductService : IProductService
         return new ProductOperationResult<ProductDto>(ProductOperationStatus.Success, dto);
     }
 
+    public async Task<ProductOperationResult<ProductDto>> ChangeProductStatusAsync(
+        Guid productId,
+        Guid currentSellerId,
+        ChangeProductStatusRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request?.Status) ||
+            !Enum.TryParse<ProductStatus>(request.Status, true, out var newStatus))
+        {
+            return new ProductOperationResult<ProductDto>(
+                ProductOperationStatus.InvalidOperation,
+                ErrorMessage: "Invalid status value. Allowed values are DRAFT, ACTIVE, INACTIVE.");
+        }
+
+        var product = await _dbContext.Products
+            .Include(p => p.Variants)
+            .Include(p => p.Images)
+            .FirstOrDefaultAsync(p => p.Id == productId && !p.IsDeleted, cancellationToken);
+
+        if (product == null)
+        {
+            return new ProductOperationResult<ProductDto>(
+                ProductOperationStatus.NotFound,
+                ErrorMessage: "Product not found in the system.");
+        }
+
+        if (product.SellerId != currentSellerId)
+        {
+            return new ProductOperationResult<ProductDto>(
+                ProductOperationStatus.Forbidden,
+                ErrorMessage: "You do not have permission to modify this product.");
+        }
+
+        // If activating the product, ensure it has at least 1 active variant with a valid price, and at least 1 image
+        if (newStatus == ProductStatus.Active)
+        {
+            var hasActiveVariant = product.Variants.Any(v => !v.IsDeleted && v.Status == VariantStatus.Active && v.Price.HasValue && v.Price.Value > 0);
+            if (!hasActiveVariant)
+            {
+                return new ProductOperationResult<ProductDto>(
+                    ProductOperationStatus.InvalidOperation,
+                    ErrorMessage: "Cannot activate product without at least one active variant with a valid price.");
+            }
+
+            var hasActiveImage = product.Images.Any(i => !i.IsDeleted && i.IsActive);
+            if (!hasActiveImage)
+            {
+                return new ProductOperationResult<ProductDto>(
+                    ProductOperationStatus.InvalidOperation,
+                    ErrorMessage: "Cannot activate product without at least one active product image.");
+            }
+
+            product.PublishedAt ??= DateTimeOffset.UtcNow;
+            product.StatusReason = null;
+        }
+        else if (newStatus == ProductStatus.Inactive)
+        {
+            product.StatusReason = ProductInactiveReason.SellerPaused;
+            if (!string.IsNullOrWhiteSpace(request.StatusReason) &&
+                Enum.TryParse<ProductInactiveReason>(request.StatusReason, true, out var reason))
+            {
+                product.StatusReason = reason;
+            }
+        }
+        else if (newStatus == ProductStatus.Draft)
+        {
+            product.StatusReason = null;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        product.Status = newStatus;
+        product.UpdatedAt = now;
+        product.UpdatedBy = currentSellerId;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var dto = new ProductDto(
+            product.Id,
+            product.SellerId,
+            product.CategoryId,
+            product.Name,
+            product.Description,
+            product.Brand,
+            product.Status.ToString());
+
+        return new ProductOperationResult<ProductDto>(ProductOperationStatus.Success, dto);
+    }
+
     public async Task<ProductOperationResult<bool>> SoftDeleteAsync(Guid id, Guid currentSellerId, CancellationToken cancellationToken = default)
     {
         var product = await _dbContext.Products

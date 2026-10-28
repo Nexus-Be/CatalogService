@@ -40,6 +40,7 @@ public sealed class UploadProductImageRequest
 
 [ApiController]
 [Route("api/v1/catalog/products")]
+[Route("api/v1/products")]
 [Produces("application/json")]
 public sealed class ProductsController : ControllerBase
 {
@@ -238,7 +239,11 @@ public sealed class ProductsController : ControllerBase
             StatusCodes.Status201Created);
     }
 
+    /// <summary>
+    /// CAT-02: Update Product
+    /// </summary>
     [HttpPut("{id:guid}")]
+    [HttpPatch("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponse<ProductDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
@@ -311,6 +316,75 @@ public sealed class ProductsController : ControllerBase
                 HttpContext, 
                 result.Data, 
                 "Product updated successfully.")
+        };
+    }
+
+    /// <summary>
+    /// CAT-03: Change Product Status (Publish / Deactivate / Draft)
+    /// </summary>
+    [HttpPatch("{id:guid}/status")]
+    [ProducesResponseType(typeof(ApiResponse<ProductDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IResult> ChangeProductStatus(
+        [FromRoute] Guid id,
+        [FromBody] ChangeProductStatusRequest? request,
+        [FromQuery] Guid? sellerId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var currentSellerId = HttpContext.GetCurrentSellerId(request?.SellerId ?? sellerId);
+        if (!currentSellerId.HasValue || currentSellerId.Value == Guid.Empty)
+        {
+            return _responseFactory.FailureResult(
+                HttpContext,
+                title: "Unauthorized.",
+                status: StatusCodes.Status401Unauthorized,
+                detail: "Seller identity is required via X-Seller-Id header.",
+                errorCode: "UNAUTHORIZED"
+            );
+        }
+
+        if (string.IsNullOrWhiteSpace(request?.Status))
+        {
+            return _responseFactory.FailureResult(
+                HttpContext,
+                title: "Validation error.",
+                status: StatusCodes.Status400BadRequest,
+                detail: "Product status is required.",
+                errorCode: "VAL_INVALID_INPUT"
+            );
+        }
+
+        var result = await _productService.ChangeProductStatusAsync(id, currentSellerId.Value, request, cancellationToken);
+        return result.Status switch
+        {
+            ProductOperationStatus.NotFound => _responseFactory.FailureResult(
+                HttpContext,
+                title: "Product not found.",
+                status: StatusCodes.Status404NotFound,
+                detail: result.ErrorMessage ?? $"Product with ID '{id}' was not found in the system.",
+                errorCode: "PRODUCT_NOT_FOUND"
+            ),
+            ProductOperationStatus.Forbidden => _responseFactory.FailureResult(
+                HttpContext,
+                title: "Forbidden.",
+                status: StatusCodes.Status403Forbidden,
+                detail: result.ErrorMessage ?? "You do not have permission to modify this product.",
+                errorCode: "FORBIDDEN"
+            ),
+            ProductOperationStatus.InvalidOperation => _responseFactory.FailureResult(
+                HttpContext,
+                title: "Invalid operation.",
+                status: StatusCodes.Status400BadRequest,
+                detail: result.ErrorMessage ?? "Cannot change product status.",
+                errorCode: "VAL_INVALID_INPUT"
+            ),
+            _ => _responseFactory.SuccessResult(
+                HttpContext,
+                result.Data,
+                "Product status updated successfully.")
         };
     }
 

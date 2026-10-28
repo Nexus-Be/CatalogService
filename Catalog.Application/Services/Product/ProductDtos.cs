@@ -133,7 +133,8 @@ public enum ProductOperationStatus
     Success,
     NotFound,
     Forbidden,
-    InvalidCategory
+    InvalidCategory,
+    InvalidOperation
 }
 
 public sealed record ProductOperationResult<T>(
@@ -160,6 +161,11 @@ public sealed record UpdateProductCommand(
     Catalog.Domain.Enums.SaleType? SaleType = null,
     string? Status = null,
     string? Specifications = null);
+
+public sealed record ChangeProductStatusRequest(
+    string Status,
+    string? StatusReason = null,
+    Guid? SellerId = null);
 
 public sealed record ProductImageDto(
     Guid Id,
