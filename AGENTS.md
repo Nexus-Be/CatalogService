@@ -95,6 +95,10 @@ Khi bắt đầu làm việc tại CatalogService, AI Agent **BẮT BUỘC PHẢ
 2. **KHÔNG NHẦM LẪN KHO ẢO (CATALOG) VỚI KHO VẬT LÝ (FULFILLMENT)**: CatalogService chỉ quản lý tồn kho ảo sẵn sàng bán (`Available`). Logic vận chuyển, kiện hàng, mã tracking thuộc về FulfillmentService. ⚠️ Hiện repo **không có entity/bảng tồn kho nào** — `Available`/`Reserved` chỉ tồn tại trong `InventoryDto` in-memory của `Catalog.Api/Mock/MockCatalogStore.cs:11-15`.
 3. **CẤU HÌNH PORT 8002 VÀ DATABASE 5434 LÀ BẤT BIẾN**: `8002` là port đặc tả Docker (`Dockerfile:3-4`); chạy local bằng `dotnet run` là `5272`/`7232` (`Catalog.Api/Properties/launchSettings.json:17,27`). ❌ Không dùng `5099` (giá trị cũ còn sót trong `Catalog.Api/Catalog.Api.http:1`). DB: `category_db` port `5434` (`docker-compose.yml:19`).
 4. **HỢP ĐỒNG PROTOBUF**: ❌ Hiện **không tồn tại** `Contracts/shop.proto`, không có package `Grpc.*`, không có `CatalogGrpcService`, nên **không có hợp đồng nào để đồng bộ với Gateway**. Bề mặt khả dụng duy nhất là REST `/api/v1/catalog/*`. Cấm tự tạo/sửa `.proto` khi chưa chốt hợp đồng liên service — hãy coi `specs/02_API_GRPC_CONTRACTS.md` là đặc tả mục tiêu.
+5. **CẤM TỰ Ý SỬA ĐỔI BIẾN MÔI TRƯỜNG, SECRET VÀ KEY BÍ MẬT (MANDATORY HUMAN-IN-THE-LOOP FOR SECRETS)**:
+   - **Tuyệt đối CẤM mọi AI Coding Agent tự ý sửa đổi, thay thế, xóa hoặc ghi đè các biến môi trường (`.env`, `.env.*`), Connection Strings, API Keys, JWT Secrets, chứng chỉ hoặc bất kỳ thông tin bí mật (credentials/secrets) nào trong toàn bộ hệ thống.**
+   - **Bắt buộc phải xin ý kiến và nhận được sự đồng ý rõ ràng (explicit approval) từ người dùng trước khi thực hiện bất kỳ thay đổi nào liên quan đến biến môi trường hoặc tài khoản bí mật.**
+   - Khi phát hiện cấu hình môi trường, connection string hoặc secret key có vấn đề hoặc cần cập nhật, Agent **CHỈ ĐƯỢC PHÉP báo cáo hiện trạng, đề xuất phương án và chờ người dùng xác nhận**, tuyệt đối không tự ý can thiệp.
 
 ---
 
