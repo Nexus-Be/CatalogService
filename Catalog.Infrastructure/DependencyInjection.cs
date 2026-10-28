@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Catalog.Application.Interfaces;
+using Catalog.Infrastructure.Consumers;
 using Catalog.Infrastructure.Persistence;
 using Catalog.Infrastructure.Services;
 
@@ -37,6 +38,7 @@ public static class DependencyInjection
         services.AddMassTransit(x =>
         {
             x.SetKebabCaseEndpointNameFormatter();
+            x.AddConsumer<CategoryCreatedConsumer>();
 
             if (useInMemory)
             {

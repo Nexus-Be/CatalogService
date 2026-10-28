@@ -6,6 +6,12 @@ using Microsoft.AspNetCore.Mvc;
 using Catalog.Api.Mock;
 using Catalog.Api.Responses;
 using Catalog.Application.Services.Category;
+using System.Threading;
+using System.Threading.Tasks;
+using MassTransit;
+using Catalog.Application.Common.Contracts.Events;
+using Catalog.Application.Interfaces;
+using Catalog.Domain.Entities;
 
 public sealed record CreateCategoryRequest(string Name, string? Description, Guid? ParentId, short Level, int SortOrder);
 public sealed record UpdateCategoryRequest(string Name, string? Description, short Level, int SortOrder, bool IsDisabled);
@@ -18,11 +24,20 @@ public sealed class CategoriesController : ControllerBase
     private readonly MockCatalogStore _store;
     private readonly IApiResponseFactory _responseFactory;
     private readonly ICategoryService _categoryService;
+    private readonly ICatalogDbContext _dbContext;
+    private readonly IPublishEndpoint _publishEndpoint;
 
-    public CategoriesController(MockCatalogStore store, ICategoryService categoryService, IApiResponseFactory responseFactory)
+    public CategoriesController(
+        MockCatalogStore store,
+        ICategoryService categoryService,
+        ICatalogDbContext dbContext,
+        IPublishEndpoint publishEndpoint,
+        IApiResponseFactory responseFactory)
     {
         _store = store;
         _categoryService = categoryService;
+        _dbContext = dbContext;
+        _publishEndpoint = publishEndpoint;
         _responseFactory = responseFactory;
     }
 
@@ -64,7 +79,7 @@ public async Task<IResult> ListCategories(
 
     [HttpPost]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status201Created)]
-    public IResult CreateCategory([FromBody] CreateCategoryRequest request)
+    public async Task<IResult> CreateCategory([FromBody] CreateCategoryRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
         {
@@ -77,8 +92,46 @@ public async Task<IResult> ListCategories(
             );
         }
 
+        var category = new Category
+        {
+            Id = Guid.NewGuid(),
+            Name = request.Name.Trim(),
+            Description = request.Description,
+            ParentId = request.ParentId,
+            Level = request.Level,
+            SortOrder = request.SortOrder,
+            IsDisabled = false,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        _dbContext.Categories.Add(category);
+
+        // Bắn sự kiện CategoryCreatedEvent qua Message Broker (RabbitMQ / In-Memory)
+        await _publishEndpoint.Publish(new CategoryCreatedEvent
+        {
+            CategoryId = category.Id,
+            Name = category.Name,
+            Description = category.Description,
+            ParentId = category.ParentId,
+            Level = category.Level,
+            SortOrder = category.SortOrder,
+            CreatedAt = category.CreatedAt.UtcDateTime
+        }, cancellationToken);
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
         var created = _store.CreateCategory(request.Name, request.Description, request.ParentId, request.Level, request.SortOrder);
-        return _responseFactory.SuccessResult(HttpContext, created, "Category created successfully.", StatusCodes.Status201Created);
+        var dto = new CategoryDto(
+            category.Id,
+            category.ParentId,
+            category.Name,
+            category.Description,
+            category.Level,
+            category.SortOrder,
+            category.IsDisabled
+        );
+
+        return _responseFactory.SuccessResult(HttpContext, dto, "Category created successfully.", StatusCodes.Status201Created);
     }
 
     [HttpPut("{id:guid}")]
