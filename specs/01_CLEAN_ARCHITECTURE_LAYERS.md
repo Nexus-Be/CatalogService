@@ -1,8 +1,8 @@
 # 01 — PHÂN TẦNG CLEAN ARCHITECTURE & QUY TẮC PHỤ THUỘC (CATALOG SERVICE)
 
-> **Trạng thái triển khai (2026-10-24):** ⚠️ Một phần — 4/4 project tồn tại và biên dịch được, nhưng **tầng Application chưa được nối vào API** (0 controller inject service), **Api là REST mock chứ không phải gRPC**, và **Domain thiếu các thành phần đặc tả hứa** (`Inventory`, `Money`, `InsufficientStockException`, domain events).
-> **Nguồn sự thật:** code trong repo này (bằng chứng `file:dòng`); không tham chiếu tài liệu ngoài repo.
-> **Cập nhật lần cuối:** 2026-10-24.
+> **Trạng thái triển khai (2026-10-29):** ✅ ĐÃ CHUẨN HÓA — 4 tầng Clean Architecture chuẩn hóa: Feature Co-location cho Product và Category tại `Catalog.Application/Services/`, 1-to-1 REST Controllers tại `Catalog.Api/Controllers/ProductsController.cs` và `CategoriesController.cs`, Consumer DI extension `ConsumerExtensions.cs`, 100% RESTful HTTP/JSON (CẤM gRPC).
+> **Nguồn sự thật:** code trong repo này (`Catalog.sln`, `Catalog.Application/Services/`, `Catalog.Application/Consumers/`, `Catalog.Api/Controllers/`).
+> **Cập nhật lần cuối:** 2026-10-29.
 
 Solution `Catalog.sln` bao gồm 4 project tương ứng với 4 tầng kiến trúc sạch (Clean Architecture):
 

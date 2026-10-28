@@ -25,15 +25,16 @@ builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
 // 2. Swagger / OpenAPI & JSON Enum Conversion
+builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    options.SerializerOptions.Converters.Add(new Catalog.Api.Common.Converters.PascalCaseJsonStringEnumConverter(allowIntegerValues: false));
 });
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(options =>
 {
-    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    options.JsonSerializerOptions.Converters.Add(new Catalog.Api.Common.Converters.PascalCaseJsonStringEnumConverter(allowIntegerValues: false));
 });
 
 var app = builder.Build();
@@ -65,6 +66,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 // 4. Standard Health & Test Endpoint
+app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", service = "Catalog.Api" }));
 
 app.Run();
