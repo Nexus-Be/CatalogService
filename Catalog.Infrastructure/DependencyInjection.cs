@@ -28,7 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IImageStorageService, CloudinaryStorageService>();
 
         // MassTransit — dùng In-Memory khi chạy local Development (không có RabbitMQ),
-        // dùng RabbitMQ thật khi deploy Staging/Production.
+        // dùng RabbitMQ thật khi kết nối tới container Docker nexus-rabbitmq.
         var rabbitHost = configuration["RabbitMq:Host"] ?? "localhost";
         var environment = configuration["ASPNETCORE_ENVIRONMENT"] ?? Environments.Production;
         var useInMemory = bool.TryParse(configuration["RabbitMq:UseInMemory"], out var explicitInMemory)
@@ -50,13 +50,8 @@ public static class DependencyInjection
             }
             else
             {
-                // Staging/Production: dùng RabbitMQ thật + EF Outbox
-                x.AddEntityFrameworkOutbox<AppDbContext>(o =>
-                {
-                    o.UsePostgres();
-                    o.UseBusOutbox();
-                });
-
+                // Dùng RabbitMQ thật kết nối container Docker nexus-rabbitmq trực tiếp
+                // (Không kích hoạt tiến trình ngầm polling EF Outbox lên Neon DB để tránh loop connection)
                 x.UsingRabbitMq((context, cfg) =>
                 {
                     var rabbitPort = ushort.TryParse(configuration["RabbitMq:Port"], out var port) ? port : (ushort)5672;

@@ -17,3 +17,4 @@ public sealed record CategoryCreatedEvent
     public int SortOrder { get; init; }
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
 }
+

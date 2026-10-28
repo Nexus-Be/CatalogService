@@ -32,3 +32,4 @@ public sealed class CategoryCreatedConsumer : IConsumer<CategoryCreatedEvent>
         return Task.CompletedTask;
     }
 }
+

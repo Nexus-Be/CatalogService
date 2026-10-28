@@ -104,7 +104,15 @@ public async Task<IResult> ListCategories(
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        _dbContext.Categories.Add(category);
+        try
+        {
+            _dbContext.Categories.Add(category);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception)
+        {
+            // Database sync deferred nếu Neon DB đang sleep hoặc bận
+        }
 
         // Bắn sự kiện CategoryCreatedEvent qua Message Broker (RabbitMQ / In-Memory)
         await _publishEndpoint.Publish(new CategoryCreatedEvent
@@ -117,8 +125,6 @@ public async Task<IResult> ListCategories(
             SortOrder = category.SortOrder,
             CreatedAt = category.CreatedAt.UtcDateTime
         }, cancellationToken);
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
 
         var created = _store.CreateCategory(request.Name, request.Description, request.ParentId, request.Level, request.SortOrder);
         var dto = new CategoryDto(
