@@ -8,7 +8,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace Catalog.Infrastructure.Migrations
+namespace Catalog.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
     partial class AppDbContextModelSnapshot : ModelSnapshot
@@ -28,9 +28,8 @@ namespace Catalog.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("Action")
+                        .HasColumnType("integer");
 
                     b.Property<string>("ChangedColumns")
                         .HasColumnType("jsonb");
@@ -248,9 +247,8 @@ namespace Catalog.Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("PublishedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("SaleType")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("SaleType")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("SellerId")
                         .HasColumnType("uuid");
@@ -258,12 +256,11 @@ namespace Catalog.Infrastructure.Migrations
                     b.Property<string>("Specifications")
                         .HasColumnType("jsonb");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
-                    b.Property<string>("StatusReason")
-                        .HasColumnType("text");
+                    b.Property<int?>("StatusReason")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -289,10 +286,10 @@ namespace Catalog.Infrastructure.Migrations
                             IsDeleted = false,
                             Name = "Smartphone Nexus X Pro 256GB",
                             PublishedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            SaleType = "Regular",
+                            SaleType = 0,
                             SellerId = new Guid("cccccccc-3333-3333-3333-333333333333"),
                             Specifications = "{\"ram\":\"12GB\",\"storage\":\"256GB\",\"chipset\":\"Snapdragon 8 Gen 3\"}",
-                            Status = "Active",
+                            Status = 1,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         },
@@ -307,10 +304,10 @@ namespace Catalog.Infrastructure.Migrations
                             IsDeleted = false,
                             Name = "Áo Hoodie Nexus Unisex Cotton",
                             PublishedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            SaleType = "Regular",
+                            SaleType = 0,
                             SellerId = new Guid("cccccccc-3333-3333-3333-333333333333"),
                             Specifications = "{\"material\":\"Cotton 100%\",\"color\":\"Black\",\"size\":\"L\"}",
-                            Status = "Active",
+                            Status = 1,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         },
@@ -325,10 +322,10 @@ namespace Catalog.Infrastructure.Migrations
                             IsDeleted = false,
                             Name = "Ấm Siêu Tốc Thông Minh Nexus 1.7L",
                             PublishedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            SaleType = "Regular",
+                            SaleType = 0,
                             SellerId = new Guid("cccccccc-3333-3333-3333-333333333333"),
                             Specifications = "{\"capacity\":\"1.7L\",\"power\":\"1800W\",\"material\":\"Inox 304\"}",
-                            Status = "Active",
+                            Status = 1,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         },
@@ -343,10 +340,10 @@ namespace Catalog.Infrastructure.Migrations
                             IsDeleted = false,
                             Name = "Mũ Bảo Hiểm Xe Đạp Nexus Aero",
                             PublishedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            SaleType = "Auction",
+                            SaleType = 1,
                             SellerId = new Guid("cccccccc-3333-3333-3333-333333333333"),
                             Specifications = "{\"weight\":\"220g\",\"size\":\"M (54-58cm)\",\"color\":\"Race Red\"}",
-                            Status = "Active",
+                            Status = 1,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         },
@@ -361,10 +358,10 @@ namespace Catalog.Infrastructure.Migrations
                             IsDeleted = false,
                             Name = "Clean Architecture trong Microservices",
                             PublishedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            SaleType = "Regular",
+                            SaleType = 0,
                             SellerId = new Guid("cccccccc-3333-3333-3333-333333333333"),
                             Specifications = "{\"pages\":420,\"publisher\":\"Nexus Press\",\"language\":\"Vietnamese\"}",
-                            Status = "Active",
+                            Status = 1,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         });
@@ -612,9 +609,8 @@ namespace Catalog.Infrastructure.Migrations
                     b.Property<short>("Rating")
                         .HasColumnType("smallint");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -674,12 +670,11 @@ namespace Catalog.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
-                    b.Property<string>("StatusReason")
-                        .HasColumnType("text");
+                    b.Property<int?>("StatusReason")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -710,7 +705,7 @@ namespace Catalog.Infrastructure.Migrations
                             Price = 15000000m,
                             ProductId = new Guid("11000000-0000-0000-0000-000000000001"),
                             SkuCode = "NX-PHONE-256",
-                            Status = "Active",
+                            Status = 0,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         },
@@ -727,7 +722,7 @@ namespace Catalog.Infrastructure.Migrations
                             Price = 450000m,
                             ProductId = new Guid("22000000-0000-0000-0000-000000000002"),
                             SkuCode = "NX-HOODIE-L",
-                            Status = "Active",
+                            Status = 0,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         },
@@ -744,7 +739,7 @@ namespace Catalog.Infrastructure.Migrations
                             Price = 850000m,
                             ProductId = new Guid("33000000-0000-0000-0000-000000000003"),
                             SkuCode = "NX-KETTLE-17",
-                            Status = "Active",
+                            Status = 0,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         },
@@ -761,7 +756,7 @@ namespace Catalog.Infrastructure.Migrations
                             Price = 620000m,
                             ProductId = new Guid("44000000-0000-0000-0000-000000000004"),
                             SkuCode = "NX-HELMET-M",
-                            Status = "Active",
+                            Status = 0,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         },
@@ -778,7 +773,7 @@ namespace Catalog.Infrastructure.Migrations
                             Price = 350000m,
                             ProductId = new Guid("55000000-0000-0000-0000-000000000005"),
                             SkuCode = "NX-BOOK-ARCH",
-                            Status = "Active",
+                            Status = 0,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         });

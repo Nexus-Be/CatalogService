@@ -12,9 +12,6 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.Property(x => x.Name).HasMaxLength(255).IsRequired();
         builder.Property(x => x.Description).HasMaxLength(4000);
         builder.Property(x => x.Brand).HasMaxLength(150);
-        builder.Property(x => x.SaleType).HasConversion<string>();
-        builder.Property(x => x.Status).HasConversion<string>();
-        builder.Property(x => x.StatusReason).HasConversion<string>();
         builder.Property(x => x.Specifications).HasColumnType("jsonb");
 
         builder.HasOne(p => p.Category)

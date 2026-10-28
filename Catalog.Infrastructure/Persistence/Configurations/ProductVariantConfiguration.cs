@@ -14,8 +14,6 @@ public class ProductVariantConfiguration : IEntityTypeConfiguration<ProductVaria
         builder.Property(x => x.Name).HasMaxLength(255).IsRequired();
         builder.Property(x => x.Price).HasPrecision(18, 2);
         builder.Property(x => x.Currency).HasMaxLength(10);
-        builder.Property(x => x.Status).HasConversion<string>();
-        builder.Property(x => x.StatusReason).HasConversion<string>();
 
         builder.HasOne(v => v.Product)
             .WithMany(p => p.Variants)
