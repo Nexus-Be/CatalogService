@@ -9,4 +9,5 @@ public interface ICategoryService
 {
     Task<CategoryDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CategoryDto>> ListAllAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CategoryItemDto>> GetCategoriesAsync(CategoryListQuery query, CancellationToken cancellationToken = default);
 }

@@ -17,27 +17,37 @@ public sealed class CategoriesController : ControllerBase
 {
     private readonly MockCatalogStore _store;
     private readonly IApiResponseFactory _responseFactory;
+    private readonly ICategoryService _categoryService;
 
-    public CategoriesController(MockCatalogStore store, IApiResponseFactory responseFactory)
+    public CategoriesController(MockCatalogStore store, ICategoryService categoryService, IApiResponseFactory responseFactory)
     {
         _store = store;
+        _categoryService = categoryService;
         _responseFactory = responseFactory;
     }
 
-    [HttpGet]
-    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<CategoryDto>>), StatusCodes.Status200OK)]
-    public IResult ListCategories()
-    {
-        var categories = _store.GetCategories();
-        return _responseFactory.SuccessResult(HttpContext, categories, "Categories retrieved successfully.");
-    }
+   [HttpGet]
+[ProducesResponseType(typeof(ApiResponse<IReadOnlyList<CategoryItemDto>>), StatusCodes.Status200OK)]
+public async Task<IResult> ListCategories(
+    [FromQuery] Guid? parentId = null,
+    [FromQuery] bool tree = false,
+    [FromQuery] string? keyword = null,
+    CancellationToken cancellationToken = default)
+{
+    var categories = await _categoryService.GetCategoriesAsync(
+        new CategoryListQuery(parentId, tree, keyword), 
+        cancellationToken);
+    return _responseFactory.SuccessResult(HttpContext, categories, "Categories retrieved successfully.");
+}
 
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-    public IResult GetCategory([FromRoute] Guid id)
+    public async Task<IResult> GetCategoryById(
+        [FromRoute] Guid id,
+        CancellationToken cancellationToken = default)
     {
-        var category = _store.GetCategoryById(id);
+        var category = await _categoryService.GetByIdAsync(id, cancellationToken);
         if (category == null)
         {
             return _responseFactory.FailureResult(

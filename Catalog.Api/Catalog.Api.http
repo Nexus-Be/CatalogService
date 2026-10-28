@@ -1,4 +1,4 @@
-@Host = http://localhost:5099
+@Host = http://localhost:5272
 @ElectronicsId = aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
 @ProductId = 22222222-2222-2222-2222-000000000001
 @SellerId = 11111111-1111-1111-1111-000000000004
