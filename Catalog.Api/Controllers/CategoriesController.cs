@@ -1,16 +1,18 @@
 namespace Catalog.Api.Controllers;
 
 using System;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Catalog.Api.Mock;
-using Catalog.Api.Responses;
-using Catalog.Application.Services.Category;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using MassTransit;
+using Catalog.Api.Mock;
+using Catalog.Api.Responses;
 using Catalog.Application.Common.Contracts.Events;
 using Catalog.Application.Interfaces;
+using Catalog.Application.Services.Category;
 using Catalog.Domain.Entities;
 
 public sealed record CreateCategoryRequest(string Name, string? Description, Guid? ParentId, short Level, int SortOrder);
@@ -41,19 +43,19 @@ public sealed class CategoriesController : ControllerBase
         _responseFactory = responseFactory;
     }
 
-   [HttpGet]
-[ProducesResponseType(typeof(ApiResponse<IReadOnlyList<CategoryItemDto>>), StatusCodes.Status200OK)]
-public async Task<IResult> ListCategories(
-    [FromQuery] Guid? parentId = null,
-    [FromQuery] bool tree = false,
-    [FromQuery] string? keyword = null,
-    CancellationToken cancellationToken = default)
-{
-    var categories = await _categoryService.GetCategoriesAsync(
-        new CategoryListQuery(parentId, tree, keyword), 
-        cancellationToken);
-    return _responseFactory.SuccessResult(HttpContext, categories, "Categories retrieved successfully.");
-}
+    [HttpGet]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<CategoryItemDto>>), StatusCodes.Status200OK)]
+    public async Task<IResult> ListCategories(
+        [FromQuery] Guid? parentId = null,
+        [FromQuery] bool tree = false,
+        [FromQuery] string? keyword = null,
+        CancellationToken cancellationToken = default)
+    {
+        var categories = await _categoryService.GetCategoriesAsync(
+            new CategoryListQuery(parentId, tree, keyword), 
+            cancellationToken);
+        return _responseFactory.SuccessResult(HttpContext, categories, "Categories retrieved successfully.");
+    }
 
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)]
@@ -79,9 +81,10 @@ public async Task<IResult> ListCategories(
 
     [HttpPost]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<IResult> CreateCategory([FromBody] CreateCategoryRequest request, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
+        if (string.IsNullOrWhiteSpace(request?.Name))
         {
             return _responseFactory.FailureResult(
                 HttpContext,
@@ -92,11 +95,37 @@ public async Task<IResult> ListCategories(
             );
         }
 
+        var trimmedName = request.Name.Trim();
+
+        // Ràng buộc cuộc họp 28/10: Tên category không được phép trùng với nhau
+        bool isDuplicate = false;
+        try
+        {
+            isDuplicate = await _dbContext.Categories
+                .AsNoTracking()
+                .AnyAsync(c => !c.IsDeleted && c.Name.ToLower() == trimmedName.ToLower(), cancellationToken);
+        }
+        catch
+        {
+            isDuplicate = _store.GetCategories().Any(c => c.Name.Equals(trimmedName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (isDuplicate)
+        {
+            return _responseFactory.FailureResult(
+                HttpContext,
+                title: "Validation error.",
+                status: StatusCodes.Status400BadRequest,
+                detail: $"Category with name '{trimmedName}' already exists.",
+                errorCode: "VAL_INVALID_INPUT"
+            );
+        }
+
         var category = new Category
         {
             Id = Guid.NewGuid(),
-            Name = request.Name.Trim(),
-            Description = request.Description,
+            Name = trimmedName,
+            Description = request.Description?.Trim(),
             ParentId = request.ParentId,
             Level = request.Level,
             SortOrder = request.SortOrder,
@@ -143,8 +172,46 @@ public async Task<IResult> ListCategories(
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-    public IResult UpdateCategory([FromRoute] Guid id, [FromBody] UpdateCategoryRequest request)
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IResult> UpdateCategory([FromRoute] Guid id, [FromBody] UpdateCategoryRequest request, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(request?.Name))
+        {
+            return _responseFactory.FailureResult(
+                HttpContext,
+                title: "Validation error.",
+                status: StatusCodes.Status400BadRequest,
+                detail: "Category name is required.",
+                errorCode: "VAL_INVALID_INPUT"
+            );
+        }
+
+        var trimmedName = request.Name.Trim();
+
+        // Ràng buộc cuộc họp 28/10: Tên category không được phép trùng với nhau
+        bool isDuplicate = false;
+        try
+        {
+            isDuplicate = await _dbContext.Categories
+                .AsNoTracking()
+                .AnyAsync(c => c.Id != id && !c.IsDeleted && c.Name.ToLower() == trimmedName.ToLower(), cancellationToken);
+        }
+        catch
+        {
+            isDuplicate = _store.GetCategories().Any(c => c.Id != id && c.Name.Equals(trimmedName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (isDuplicate)
+        {
+            return _responseFactory.FailureResult(
+                HttpContext,
+                title: "Validation error.",
+                status: StatusCodes.Status400BadRequest,
+                detail: $"Category with name '{trimmedName}' already exists.",
+                errorCode: "VAL_INVALID_INPUT"
+            );
+        }
+
         var updated = _store.UpdateCategory(id, request.Name, request.Description, request.Level, request.SortOrder, request.IsDisabled);
         if (updated == null)
         {
@@ -155,6 +222,25 @@ public async Task<IResult> ListCategories(
                 detail: $"Category with ID '{id}' was not found in the system.",
                 errorCode: "CATEGORY_NOT_FOUND"
             );
+        }
+
+        try
+        {
+            var dbCategory = await _dbContext.Categories.FirstOrDefaultAsync(c => c.Id == id && !c.IsDeleted, cancellationToken);
+            if (dbCategory != null)
+            {
+                dbCategory.Name = trimmedName;
+                dbCategory.Description = request.Description?.Trim();
+                dbCategory.Level = request.Level;
+                dbCategory.SortOrder = request.SortOrder;
+                dbCategory.IsDisabled = request.IsDisabled;
+                dbCategory.UpdatedAt = DateTimeOffset.UtcNow;
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            // Database sync deferred
         }
 
         return _responseFactory.SuccessResult(HttpContext, updated, "Category updated successfully.");

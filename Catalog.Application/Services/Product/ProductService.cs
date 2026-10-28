@@ -650,6 +650,15 @@ public sealed class ProductService : IProductService
                 ErrorMessage: "Cannot add variants to an auction product. Auction products only support a single fixed variant.");
         }
 
+        // Ràng buộc cuộc họp 28/10: Giới hạn tối đa 10 variants cho 1 product
+        var currentVariantCount = product.Variants.Count(v => !v.IsDeleted);
+        if (currentVariantCount >= 10)
+        {
+            return new VariantOperationResult<VariantDetailDto>(
+                VariantOperationStatus.InvalidOperation,
+                ErrorMessage: "A product cannot exceed 10 variants.");
+        }
+
         var sku = request.SkuCode?.Trim();
         if (string.IsNullOrWhiteSpace(sku))
         {
@@ -658,15 +667,19 @@ public sealed class ProductService : IProductService
                 ErrorMessage: "SKU code is required.");
         }
 
+        // Ràng buộc cuộc họp 28/10: SKU được phép trùng giữa các seller khác nhau,
+        // nhưng TRONG NỘI BỘ SHOP CỦA 1 SELLER ĐÓ thì KHÔNG ĐƯỢC TRÙNG SKU.
         var skuExists = await _dbContext.ProductVariants
             .AsNoTracking()
-            .AnyAsync(v => !v.IsDeleted && v.SkuCode.ToLower() == sku.ToLower(), cancellationToken);
+            .AnyAsync(v => !v.IsDeleted 
+                        && v.Product != null && v.Product.SellerId == currentSellerId 
+                        && v.SkuCode.ToLower() == sku.ToLower(), cancellationToken);
 
         if (skuExists)
         {
             return new VariantOperationResult<VariantDetailDto>(
                 VariantOperationStatus.DuplicateSku,
-                ErrorMessage: $"SKU code '{sku}' already exists.");
+                ErrorMessage: $"SKU code '{sku}' already exists in your shop.");
         }
 
         if (request.Price <= 0)
