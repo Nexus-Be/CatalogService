@@ -30,7 +30,9 @@ public static class DependencyInjection
         // dùng RabbitMQ thật khi deploy Staging/Production.
         var rabbitHost = configuration["RabbitMq:Host"] ?? "localhost";
         var environment = configuration["ASPNETCORE_ENVIRONMENT"] ?? Environments.Production;
-        var useInMemory = environment == Environments.Development && rabbitHost == "localhost";
+        var useInMemory = bool.TryParse(configuration["RabbitMq:UseInMemory"], out var explicitInMemory)
+            ? explicitInMemory
+            : (environment == Environments.Development && rabbitHost == "localhost");
 
         services.AddMassTransit(x =>
         {

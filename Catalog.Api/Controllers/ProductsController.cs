@@ -385,7 +385,7 @@ public sealed class ProductsController : ControllerBase
             );
         }
 
-        if (request.File == null || request.File.Length == 0)
+        if (request?.File == null || request.File.Length == 0)
         {
             return _responseFactory.FailureResult(
                 HttpContext,
