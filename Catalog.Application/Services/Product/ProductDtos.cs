@@ -225,6 +225,68 @@ public sealed record VariantDetailDto(
     string? StatusReason,
     IReadOnlyList<ProductVariantAttributeDto> Attributes);
 
+// ==========================================
+// SELLER SPECIFIC DTOS & QUERIES (CAT-44, CAT-45)
+// ==========================================
+
+public sealed record SellerProductSearchQuery(
+    int Page = 1,
+    int PageSize = 20,
+    string? Keyword = null,
+    Catalog.Domain.Enums.ProductStatus? Status = null,
+    Guid? CategoryId = null,
+    Catalog.Domain.Enums.SaleType? SaleType = null,
+    string? SortBy = null);
+
+public sealed record SellerProductListItemDto(
+    Guid ProductId,
+    string Name,
+    string? Brand,
+    Guid CategoryId,
+    string? CategoryName,
+    string SaleType,
+    string Status,
+    string? StatusReason,
+    decimal? MinPrice,
+    decimal? MaxPrice,
+    string? PrimaryImageUrl,
+    int VariantCount,
+    bool HasOrder,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? PublishedAt);
+
+public sealed record SellerProductVariantDto(
+    Guid VariantId,
+    string SkuCode,
+    string Name,
+    decimal? Price,
+    string Currency,
+    string Status,
+    string? StatusReason,
+    bool IsActive,
+    bool HasOrder,
+    IReadOnlyList<ProductVariantAttributeDto> Attributes,
+    IReadOnlyList<ProductImageDto> Images);
+
+public sealed record SellerProductDetailDto(
+    Guid ProductId,
+    Guid SellerId,
+    Guid CategoryId,
+    string? CategoryName,
+    string Name,
+    string? Description,
+    string? Brand,
+    string? Specifications,
+    string SaleType,
+    string Status,
+    string? StatusReason,
+    bool HasOrder,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? UpdatedAt,
+    DateTimeOffset? PublishedAt,
+    IReadOnlyList<ProductImageDto> Images,
+    IReadOnlyList<SellerProductVariantDto> Variants);
+
 
 
 

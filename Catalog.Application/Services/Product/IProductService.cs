@@ -61,5 +61,16 @@ public interface IProductService
         Guid variantId,
         Guid currentSellerId,
         CancellationToken cancellationToken = default);
+
+    // Seller Specific Functions (CAT-44, CAT-45)
+    Task<PagedList<SellerProductListItemDto>> SearchSellerProductsAsync(
+        Guid sellerId,
+        SellerProductSearchQuery query,
+        CancellationToken cancellationToken = default);
+
+    Task<ProductOperationResult<SellerProductDetailDto>> GetSellerProductDetailAsync(
+        Guid productId,
+        Guid sellerId,
+        CancellationToken cancellationToken = default);
 }
 

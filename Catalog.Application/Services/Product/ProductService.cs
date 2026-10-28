@@ -1036,4 +1036,198 @@ public sealed class ProductService : IProductService
         await _dbContext.SaveChangesAsync(cancellationToken);
         return new VariantOperationResult<bool>(VariantOperationStatus.Success, true);
     }
+
+    public async Task<PagedList<SellerProductListItemDto>> SearchSellerProductsAsync(
+        Guid sellerId,
+        SellerProductSearchQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        var products = _dbContext.Products
+            .AsNoTracking()
+            .Where(p => p.SellerId == sellerId && !p.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(query.Keyword))
+        {
+            var keyword = query.Keyword.Trim().ToLower();
+            products = products.Where(p => p.Name.ToLower().Contains(keyword) || (p.Brand != null && p.Brand.ToLower().Contains(keyword)));
+        }
+
+        if (query.Status.HasValue)
+        {
+            products = products.Where(p => p.Status == query.Status.Value);
+        }
+
+        if (query.CategoryId.HasValue)
+        {
+            products = products.Where(p => p.CategoryId == query.CategoryId.Value);
+        }
+
+        if (query.SaleType.HasValue)
+        {
+            products = products.Where(p => p.SaleType == query.SaleType.Value);
+        }
+
+        var totalCount = await products.CountAsync(cancellationToken);
+
+        IQueryable<Catalog.Domain.Entities.Product> ordered = query.SortBy switch
+        {
+            "createdAt_asc" => products.OrderBy(p => p.CreatedAt).ThenBy(p => p.Id),
+            "createdAt_desc" => products.OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Id),
+            "name_asc" => products.OrderBy(p => p.Name).ThenBy(p => p.Id),
+            "name_desc" => products.OrderByDescending(p => p.Name).ThenBy(p => p.Id),
+            "price_asc" => products.OrderBy(p => p.Variants.Where(v => !v.IsDeleted).Min(v => v.Price)).ThenBy(p => p.Id),
+            "price_desc" => products.OrderByDescending(p => p.Variants.Where(v => !v.IsDeleted).Min(v => v.Price)).ThenBy(p => p.Id),
+            _ => products.OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Id),
+        };
+
+        var page = query.Page < 1 ? 1 : query.Page;
+        var pageSize = query.PageSize < 1 ? 20 : (query.PageSize > 100 ? 100 : query.PageSize);
+
+        var rows = await ordered
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p => new
+            {
+                p.Id,
+                p.Name,
+                p.Brand,
+                p.CategoryId,
+                CategoryName = p.Category != null ? p.Category.Name : null,
+                p.SaleType,
+                p.Status,
+                p.StatusReason,
+                MinPrice = p.Variants.Where(v => !v.IsDeleted).Min(v => v.Price),
+                MaxPrice = p.Variants.Where(v => !v.IsDeleted).Max(v => v.Price),
+                PrimaryImageUrl = p.Images
+                    .Where(i => !i.IsDeleted && i.IsActive)
+                    .Select(i => i.Url)
+                    .FirstOrDefault(url => !url.Contains("nexus.local")) ?? DefaultImageUrl,
+                VariantCount = p.Variants.Count(v => !v.IsDeleted),
+                HasOrder = p.Variants.Any(v => !v.IsDeleted && v.HasOrder),
+                p.CreatedAt,
+                p.PublishedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        var items = rows.Select(r => new SellerProductListItemDto(
+            r.Id,
+            r.Name,
+            r.Brand,
+            r.CategoryId,
+            r.CategoryName,
+            r.SaleType.ToString(),
+            r.Status.ToString(),
+            r.StatusReason?.ToString(),
+            r.MinPrice,
+            r.MaxPrice,
+            r.PrimaryImageUrl,
+            r.VariantCount,
+            r.HasOrder,
+            r.CreatedAt,
+            r.PublishedAt)).ToList();
+
+        return new PagedList<SellerProductListItemDto>(items, totalCount);
+    }
+
+    public async Task<ProductOperationResult<SellerProductDetailDto>> GetSellerProductDetailAsync(
+        Guid productId,
+        Guid sellerId,
+        CancellationToken cancellationToken = default)
+    {
+        var product = await _dbContext.Products
+            .AsNoTracking()
+            .Include(p => p.Category)
+            .Include(p => p.Images)
+            .Include(p => p.Variants)
+                .ThenInclude(v => v.Attributes)
+            .Include(p => p.Variants)
+                .ThenInclude(v => v.Images)
+            .FirstOrDefaultAsync(p => p.Id == productId && !p.IsDeleted, cancellationToken);
+
+        if (product == null)
+        {
+            return new ProductOperationResult<SellerProductDetailDto>(
+                ProductOperationStatus.NotFound,
+                ErrorMessage: "Product not found in the system.");
+        }
+
+        if (product.SellerId != sellerId)
+        {
+            return new ProductOperationResult<SellerProductDetailDto>(
+                ProductOperationStatus.Forbidden,
+                ErrorMessage: "You do not have permission to view or manage this product.");
+        }
+
+        var activeVariants = product.Variants.Where(v => !v.IsDeleted).ToList();
+        var hasProductOrder = activeVariants.Any(v => v.HasOrder);
+
+        var productImages = product.Images
+            .Where(i => !i.IsDeleted)
+            .OrderBy(i => i.SortOrder)
+            .Select(i => new ProductImageDto(
+                i.Id,
+                i.ProductId,
+                i.VariantId,
+                i.Url.Contains("nexus.local") ? DefaultImageUrl : i.Url,
+                i.AltText,
+                i.IsActive,
+                i.SortOrder))
+            .ToList();
+
+        var variantDtos = activeVariants
+            .Select(v =>
+            {
+                var vImages = v.Images
+                    .Where(i => !i.IsDeleted)
+                    .OrderBy(i => i.SortOrder)
+                    .Select(i => new ProductImageDto(
+                        i.Id,
+                        i.ProductId,
+                        i.VariantId,
+                        i.Url.Contains("nexus.local") ? DefaultImageUrl : i.Url,
+                        i.AltText,
+                        i.IsActive,
+                        i.SortOrder))
+                    .ToList();
+
+                var attrs = v.Attributes
+                    .Select(a => new ProductVariantAttributeDto(a.AttrName, a.AttrValue))
+                    .ToList();
+
+                return new SellerProductVariantDto(
+                    v.Id,
+                    v.SkuCode,
+                    v.Name,
+                    v.Price,
+                    v.Currency,
+                    v.Status.ToString(),
+                    v.StatusReason?.ToString(),
+                    v.IsActive,
+                    v.HasOrder,
+                    attrs,
+                    vImages);
+            })
+            .ToList();
+
+        var detailDto = new SellerProductDetailDto(
+            product.Id,
+            product.SellerId,
+            product.CategoryId,
+            product.Category?.Name,
+            product.Name,
+            product.Description,
+            product.Brand,
+            product.Specifications,
+            product.SaleType.ToString(),
+            product.Status.ToString(),
+            product.StatusReason?.ToString(),
+            hasProductOrder,
+            product.CreatedAt,
+            product.UpdatedAt,
+            product.PublishedAt,
+            productImages,
+            variantDtos);
+
+        return new ProductOperationResult<SellerProductDetailDto>(ProductOperationStatus.Success, detailDto);
+    }
 }
