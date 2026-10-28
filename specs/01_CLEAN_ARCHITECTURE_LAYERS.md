@@ -71,3 +71,20 @@ Catalog.sln
 | Infrastructure | DbContext + config + outbox | Đủ (9 config, 1 migration, outbox đăng ký) nhưng 0 publish/consume | ⚠️ Một phần | `DependencyInjection.cs:17-48` |
 | Api | gRPC server + middleware | REST mock 13 action + middleware + Swagger | ⚠️ Khác đặc tả | `Program.cs:30-47,69` |
 | Test | Test project cho từng tầng | 0 project test | ❌ Chưa có | `Catalog.sln` (4 project) |
+
+---
+
+## 4. QUY CHUẨN CẤU TRÚC CHUẨN HÓA (SERVICE BLUEPRINT)
+1. **Giao tiếp đồng bộ (RESTful)**:
+   - `Catalog.Api/Controllers/`: Thin Dispatcher Controller, chỉ nhận request, gọi Service Interface trong Application, trả về `IActionResult`. Tuyệt đối cấm logic nghiệp vụ, cấm map anonymous object, cấm khai báo class DTO trong file controller.
+   - `Catalog.Application/Services/{Feature}/`: Mỗi feature (`Product`, `Category`...) chứa `I{Feature}Service.cs`, `{Feature}Service.cs`, và Request/Response DTOs dùng chung cho Controller.
+2. **Giao tiếp bất đồng bộ (RabbitMQ MassTransit)**:
+   - `Catalog.Application/Contracts/`: Chứa các Integration Events (ví dụ: `StockReservedIntegrationEvent`, `StockReleasedIntegrationEvent`).
+   - `Catalog.Infrastructure/Consumers/`: Chứa các MassTransit Consumer triển khai `IConsumer<TEvent>`.
+3. **Quản lý Dependency Injection**:
+   - `Catalog.Application/DependencyInjection.cs`: Đăng ký toàn bộ Application Services.
+   - `Catalog.Infrastructure/DependencyInjection.cs`: Đăng ký `AppDbContext`, MassTransit Bus, Consumers, và các dịch vụ hạ tầng.
+4. **Validation**:
+   - Input format validation đặt tại Request DTOs qua Data Annotations (`[Required]`, `[Range]`...).
+   - Business validation đặt tại Application Services hoặc Domain Exceptions.
+
