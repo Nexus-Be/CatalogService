@@ -10,7 +10,9 @@ services:
 
   # 1. Ứng dụng Catalog Service gRPC (Port 8002)
   catalog-service:
-    image: oaktree293/catalogservice:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: nexus-catalog-service
     ports:
       - "${CATALOG_SERVICE_PORT:-8002}:8002"
