@@ -16,7 +16,7 @@ public static class DependencyInjection
             ?? configuration["CONNECTION_STRING"]
             ?? configuration["CATALOG_CONNECTION_STRING"]
             ?? configuration["CATALOG_DB_CONNECTION"]
-            ?? "Host=localhost;Port=5434;Database=category_db;Username=postgres;Password=postgres";
+            ?? "Host=localhost;Port=5434;Database=catalog_db;Username=postgres;Password=postgres";
         var connectionString = NormalizeConnectionString(rawConnection);
 
         services.AddDbContext<AppDbContext>(options =>
