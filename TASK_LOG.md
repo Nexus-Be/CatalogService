@@ -176,6 +176,100 @@
   - `dotnet build Catalog.sln -c Debug`: 0 Warning, 0 Error.
   - Test trực tiếp `GET http://localhost:5272/swagger/v1/swagger.json`: Trả về HTTP 200 OK và Swagger schema đầy đủ.
 
+---
+
+## 📅 Ngày: 28/10/2026 (Chiều & Tối)
+
+### 15. Hoàn thiện API Quản lý Sản phẩm dành riêng cho Seller (CAT-44 & CAT-45)
+- **Mục đích:** Cho phép Seller xem danh sách sản phẩm thuộc quyền sở hữu của chính mình (hỗ trợ phân trang, lọc theo trạng thái `Status`, lọc theo hình thức bán `SaleType`, tìm kiếm theo từ khóa) và xem chi tiết sản phẩm thuộc shop mình (kể cả sản phẩm đang ở trạng thái `Draft` hoặc `Inactive`).
+- **Tầng Application (`ProductDtos.cs` & `ProductService.cs`):**
+  - Khai báo DTOs: `SellerProductListQuery`, `SellerProductListItemDto`.
+  - Khai báo và cài đặt `GetSellerProductsAsync`: Truy vấn trực tiếp `_dbContext.Products` lọc theo `SellerId == currentSellerId`, không bao gồm sản phẩm đã xóa mềm (`IsDeleted == false`), eager loading `Category`, `Variants`, `Images` để tính toán khoảng giá min-max, tổng số lượng biến thể và lấy ảnh đại diện.
+  - Khai báo và cài đặt `GetSellerProductDetailAsync`: Lấy chi tiết sản phẩm, xác thực quyền sở hữu `product.SellerId == currentSellerId`, trả về đầy đủ variants, attributes, images.
+- **Tầng API Controller (`SellerProductsController.cs`):**
+  - Tạo mới `SellerProductsController.cs` (`[Route("api/v1/seller/products")]`).
+  - Endpoint `GET /api/v1/seller/products`: Lấy danh sách sản phẩm của Seller từ `X-Seller-Id` header (hoặc query param), trả về phân trang chuẩn `ApiResponse<PagedData<SellerProductListItemDto>>`.
+  - Endpoint `GET /api/v1/seller/products/{id}`: Xem chi tiết sản phẩm của Seller, chặn HTTP 403 nếu cố truy cập sản phẩm của seller khác.
+- **Kiểm chứng thực tế:**
+  - Gọi `GET /api/v1/seller/products` với seller `cccccccc-3333-3333-3333-333333333333`: Trả về 200 OK với danh sách sản phẩm thật trên DB Neon.
+
+### 16. Hoàn thiện nghiệp vụ Chuyển đổi Trạng thái Sản phẩm (CAT-03)
+- **Mục đích:** Hỗ trợ Seller chuyển đổi trạng thái sản phẩm giữa `Draft`, `Active`, `Inactive` với các quy tắc ràng buộc chặt chẽ nhằm đảm bảo tính toàn vẹn dữ liệu trước khi mở bán.
+- **Tầng Application (`ProductDtos.cs` & `ProductService.cs`):**
+  - Khai báo command: `ChangeProductStatusRequest(ProductStatus TargetStatus, string? Reason)`.
+  - Cài đặt phương thức `ChangeProductStatusAsync`:
+    - Xác thực quyền sở hữu của Seller (`product.SellerId == currentSellerId`).
+    - Quy tắc chuyển đổi sang `Active`:
+      - Sản phẩm bắt buộc phải có ít nhất 1 biến thể (Variant) đang ở trạng thái `Active`.
+      - Các biến thể active phải có giá bán hợp lệ (`Price > 0`).
+      - Bắt buộc phải có ít nhất 1 hình ảnh (`ProductImages`).
+      - Nếu vi phạm bất kỳ điều kiện nào $\rightarrow$ Trả về `InvalidOperation` kèm thông báo lỗi cụ thể (ví dụ: `Cannot activate product without any active variants.` hoặc `Cannot activate product without images.`).
+    - Quy tắc chuyển đổi sang `Inactive`:
+      - Yêu cầu lý do thay đổi `Reason`.
+      - Cập nhật trạng thái `Status = Inactive`.
+- **Tầng API Controller (`ProductsController.cs`):**
+  - Endpoint `PATCH /api/v1/products/{id}/status`: Nhận request body, kiểm tra quyền Seller, trả về `ApiResponse<ProductDetailDto>`.
+- **Kiểm chứng thực tế:**
+  - Test kích hoạt sản phẩm chưa có biến thể: Bị chặn đúng HTTP 400 `VAL_INVALID_INPUT`.
+  - Test kích hoạt sản phẩm thỏa mãn điều kiện: Thành công HTTP 200 OK, `status` chuyển thành `Active`.
+
+### 17. Hoàn thiện Cập nhật Thông tin Sản phẩm & Kiểm tra Danh mục lá (CAT-02)
+- **Tầng Application (`ProductService.cs`):**
+  - Tích hợp kiểm tra danh mục khi Seller đổi `CategoryId`:
+    - Danh mục phải tồn tại trong bảng `Categories` và chưa bị xóa mềm.
+    - Danh mục phải là danh mục lá (Leaf Category) — tức không được có danh mục con (`!_dbContext.Categories.Any(c => c.ParentId == categoryId)`).
+    - Nếu danh mục có chứa danh mục con $\rightarrow$ Chặn với mã lỗi `VAL_INVALID_INPUT` ("Cannot assign product to a parent category. Please select a leaf category.").
+- **Kiểm chứng thực tế:** Đổi danh mục thành danh mục cha cấp 1 $\rightarrow$ Bị chặn đúng chuẩn validation.
+
+### 18. Tối ưu Quy chuẩn Duy nhất cho Category Name & SKU Code
+- **Category Name Uniqueness:** Kiểm tra không trùng tên danh mục (không phân biệt hoa thường, `StringComparison.OrdinalIgnoreCase`) trên toàn hệ thống trong `CategoriesController`.
+- **SKU Code Per-Seller:** Đảm bảo `SkuCode` là duy nhất theo từng Seller (`_dbContext.ProductVariants.Any(v => v.SkuCode == sku && v.Product.SellerId == sellerId)`), hỗ trợ người bán khác nhau có thể trùng mã quy ước nội bộ mà không bị xung đột.
+
+---
+
+## 📅 Ngày: 29/10/2026 (Sáng & Trưa)
+
+### 19. Chuẩn hóa & Dọn dẹp Route Swagger (Xóa bỏ Route Alias trùng lặp)
+- **Vấn đề:** Các controller trước đó khai báo đồng thời 2 Route attribute: `[Route("api/v1/catalog/...")]` và `[Route("api/v1/...")]`. Việc này khiến Swagger UI sinh ra gấp đôi số lượng endpoint (mỗi API xuất hiện 2 lần), gây rối mắt và khó phân biệt cho Frontend/Tester.
+- **Xử lý:**
+  - Đồng bộ loại bỏ toàn bộ tiền tố alias `/api/v1/catalog/...` trên tất cả 6 Controllers:
+    - [`CategoriesController.cs`](file:///d:/Apartment/FALL_26/FSA/Project/CatalogService/Catalog.Api/Controllers/CategoriesController.cs): `[Route("api/v1/categories")]`
+    - [`ProductsController.cs`](file:///d:/Apartment/FALL_26/FSA/Project/CatalogService/Catalog.Api/Controllers/ProductsController.cs): `[Route("api/v1/products")]`
+    - [`SellerProductsController.cs`](file:///d:/Apartment/FALL_26/FSA/Project/CatalogService/Catalog.Api/Controllers/SellerProductsController.cs): `[Route("api/v1/seller/products")]`
+    - [`VariantsController.cs`](file:///d:/Apartment/FALL_26/FSA/Project/CatalogService/Catalog.Api/Controllers/VariantsController.cs): `[Route("api/v1/variants")]`
+    - [`InternalVariantsController.cs`](file:///d:/Apartment/FALL_26/FSA/Project/CatalogService/Catalog.Api/Controllers/InternalVariantsController.cs): `[Route("api/v1/internal/variants")]`
+    - [`InventoryController.cs`](file:///d:/Apartment/FALL_26/FSA/Project/CatalogService/Catalog.Api/Controllers/InventoryController.cs): `[Route("api/v1/inventory")]`
+- **Kết quả:** Swagger UI giảm 50% số endpoint trùng lặp, giao diện hiển thị gọn gàng, đúng chuẩn RESTful API.
+
+### 20. Chuyển đổi toàn diện `CategoriesController` sang 100% Database Thật (Neon PostgreSQL)
+- **Hiện trạng cũ:** `CategoriesController` vẫn phụ thuộc `MockCatalogStore` (singleton nạp file JSON tĩnh). Khi gọi PUT/DELETE với ID thật trong database Neon (`10000000-0000-0000-0000-000000000001`), hàm trả về 404 `CATEGORY_NOT_FOUND` vì mock store chỉ chứa các ID giả lập (`aaaaaaaa...`).
+- **Giải pháp:**
+  - Loại bỏ hoàn toàn `MockCatalogStore` khỏi `CategoriesController`.
+  - Inject trực tiếp `ICatalogDbContext` và `IPublishEndpoint` (MassTransit).
+  - **`CreateCategory` (POST):** Kiểm tra tên danh mục duy nhất trong DB thật, thêm mới `Category` vào `_dbContext.Categories`, gọi `_dbContext.SaveChangesAsync()`, và phát sự kiện `CategoryCreatedEvent` lên RabbitMQ message bus.
+  - **`UpdateCategory` (PUT):** Truy vấn `_dbContext.Categories`, kiểm tra tồn tại (nếu không có trả về 404), kiểm tra trùng tên danh mục, cập nhật dữ liệu và thời gian `UpdatedAt`.
+  - **`DeleteCategory` (DELETE):** Truy vấn `_dbContext.Categories`, đánh dấu xóa mềm `IsDeleted = true`, `DeletedAt = DateTimeOffset.UtcNow`, lưu thay đổi.
+- **Kiểm chứng thực tế:** Cập nhật danh mục với ID thật `10000000-0000-0000-0000-000000000001` thành công HTTP 200 OK trên database Neon.
+
+### 21. Khởi tạo Tài liệu Đặc tả Chức năng Toàn diện (CATALOG_FUNCTIONS & CAT_FUNCTIONS_DETAILS)
+- **Xây dựng [`CATALOG_FUNCTIONS.md`](file:///d:/Apartment/FALL_26/FSA/Project/CatalogService/CATALOG_FUNCTIONS.md):**
+  - Tổng hợp 25 chức năng CAT đối chiếu giữa SRS Excel và mã nguồn thực tế.
+  - Bảng ma trận đối chiếu chi tiết: Mã CAT, Tên chức năng, Phương thức HTTP, Route chuẩn, Trạng thái (100% Real DB / Mock / Event), Controller & Action tương ứng.
+- **Xây dựng [`CAT_FUNCTIONS_DETAILS.txt`](file:///d:/Apartment/FALL_26/FSA/Project/CatalogService/CAT_FUNCTIONS_DETAILS.txt):**
+  - Tài liệu kỹ thuật chi tiết độc lập (34KB) gồm 4 phần:
+    - **Phần A - Cloudinary:** Cấu hình, interface `IImageStorageService`, class `CloudinaryStorageService`, luồng upload multipart, validation quy định, cơ chế CDN HTTPS.
+    - **Phần B - RabbitMQ / MassTransit:** Đăng ký In-Memory fallback cho local, EF Core Outbox cho production, `CategoryCreatedEvent`, `CategoryCreatedConsumer`, kebab-case convention.
+    - **Phần C - 25 CAT Functions:** Liệt kê đầy đủ file controller, service, tên hàm và trích xuất nguyên văn các dòng code validation đặc biệt quan trọng (kiểm tra quyền seller, kiểm tra variant active, kiểm tra giá > 0, kiểm tra leaf category...).
+    - **Phần D - Error Codes:** Bảng mã lỗi chuẩn `SCREAMING_SNAKE_CASE` toàn hệ thống.
+
+### 22. Đồng bộ Git & Clean Workspace
+- Xóa bỏ thư mục clone lồng vô tình (`CatalogService/CatalogService/`).
+- Tạo các commit rõ ràng, ngữ nghĩa:
+  - Commit `4460736`: `feat(catalog): use real database for categories and remove redundant route aliases`
+  - Commit `b58a019`: `docs: add comprehensive CAT functions implementation details, Cloudinary setup, and RabbitMQ event guide`
+- Đẩy nhánh thành công lên remote `origin/dev-quynh`. Trạng thái workspace sạch sẽ (`git status` clean).
+
+
 
 
 
