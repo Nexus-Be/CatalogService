@@ -1,0 +1,539 @@
+====================================================================================================
+                        CATALOG SERVICE - CHI TIET TOAN BO CAC CHUC NANG (CATS)
+====================================================================================================
+Ngay cap nhat: 29/10/2026
+Trang thai he thong: Hoan thien 25 CATs thuc te, ket noi PostgreSQL Neon, MassTransit RabbitMQ, Cloudinary
+Chuan kien truc: Clean Architecture (Api, Application, Domain, Infrastructure), 100% RESTful Web API
+
+====================================================================================================
+MUC LUC
+====================================================================================================
+PHAN A: CO CHE VA HUONG DAN SETUP CLOUDINARY (LUA TRU HINH ANH)
+PHAN B: CO CHE VA HUONG DAN SETUP RABBITMQ / MASSTRANSIT (MESSAGE QUEUE & EVENTS)
+PHAN C: CHI TIET 25 CHUC NANG CATS DA TRIEN KHAI
+   I. NHOM QUAN LY DANH MUC (CATEGORY): CAT-15, CAT-16, CAT-17, CAT-18, CAT-19
+  II. NHOM SELLER QUAN LY SAN PHAM: CAT-01, CAT-02, CAT-03, CAT-04, CAT-44, CAT-45
+ III. NHOM QUAN LY BIEN THE / SKU: CAT-07, CAT-08, CAT-09, CAT-10, CAT-11, CAT-42
+  IV. NHOM QUAN LY HINH ANH: CAT-12, CAT-13
+   V. NHOM BUYER XEM & TIM KIEM SAN PHAM: CAT-05, CAT-06, CAT-20, CAT-21
+  VI. NHOM API NOI BO LIEN SERVICE (INTERNAL): CAT-24, CAT-39
+PHAN D: BANG TONG HOP MA LOI TOAN HE THONG (ERROR CODES)
+
+====================================================================================================
+PHAN A: CO CHE VA HUONG DAN SETUP CLOUDINARY (LUA TRU HINH ANH)
+====================================================================================================
+
+1. Vi tri file va cau hinh:
+   - Config file: Catalog.Api/appsettings.json
+     Cau hinh:
+     "Cloudinary": {
+       "CloudName": "u6yxkkop",
+       "ApiKey": "575673659418956",
+       "ApiSecret": "F85vBI67YdxyHTKX4j4d5gG0QKM"
+     }
+   - Interface: Catalog.Application/Interfaces/IImageStorageService.cs
+     Dinh nghia:
+     Task<string> UploadImageAsync(Stream fileStream, string fileName, CancellationToken cancellationToken = default);
+     Task<bool> DeleteImageAsync(string publicId, CancellationToken cancellationToken = default);
+
+   - Service thuc thi: Catalog.Infrastructure/Services/CloudinaryStorageService.cs
+     Khoi tao:
+     var account = new Account(cloudName, apiKey, apiSecret);
+     _cloudinary = new Cloudinary(account);
+     _cloudinary.Api.Secure = true;
+
+2. Co che hoat dong khi Upload anh:
+   - Client gui file qua HTTP POST multipart/form-data den endpoint: /api/v1/products/{id}/images
+   - ProductsController kiem tra validation dau vao:
+     + Kiem tra file ton tai: request.File != null && request.File.Length > 0
+     + Kiem tra duoi mo rong (Extension): .jpg, .jpeg, .png, .webp
+     + Kiem tra dung luong: File.Length <= 5 * 1024 * 1024 (Toi da 5MB)
+     + Kiem tra so luong anh toi da: Tong so anh hien tai cua san pham < 5 anh
+   - Khi hop le, controller mo Stream doc file va goi:
+     IImageStorageService.UploadImageAsync(stream, fileName, ct)
+   - CloudinaryStorageService dong goi tham so:
+     var uploadParams = new ImageUploadParams
+     {
+         File = new FileDescription(fileName, fileStream),
+         Folder = "catalog/products",
+         Transformation = new Transformation().Quality("auto").FetchFormat("auto")
+     };
+     var uploadResult = await _cloudinary.UploadAsync(uploadParams, cancellationToken);
+   - Cloudinary tra ve SecureUrl (duong link HTTPS an toan).
+   - Service luu mot ban ghi ProductImage vao PostgreSQL gom: Id, ProductId, VariantId, Url, AltText, SortOrder, IsActive, CreatedAt.
+
+====================================================================================================
+PHAN B: CO CHE VA HUONG DAN SETUP RABBITMQ / MASSTRANSIT (MESSAGE QUEUE & EVENTS)
+====================================================================================================
+
+1. Vi tri file va cau hinh:
+   - Config file: Catalog.Api/appsettings.json
+     Cau hinh:
+     "RabbitMq": {
+       "UseInMemory": false,
+       "Host": "localhost",
+       "Port": 5672,
+       "User": "guest",
+       "Password": "guest"
+     }
+   - Event Contract: Catalog.Application/Common/Contracts/Events/CategoryCreatedEvent.cs
+     public record CategoryCreatedEvent
+     {
+         public Guid CategoryId { get; init; }
+         public string Name { get; init; } = string.Empty;
+         public string? Description { get; init; }
+         public Guid? ParentId { get; init; }
+         public short Level { get; init; }
+         public int SortOrder { get; init; }
+         public DateTime CreatedAt { get; init; }
+     }
+   - Consumer: Catalog.Infrastructure/Consumers/CategoryCreatedConsumer.cs
+     public sealed class CategoryCreatedConsumer : IConsumer<CategoryCreatedEvent>
+     {
+         public Task Consume(ConsumeContext<CategoryCreatedEvent> context)
+         {
+             var msg = context.Message;
+             _logger.LogInformation("[MassTransit] CategoryCreatedEvent received: ID={CategoryId}, Name={Name}", msg.CategoryId, msg.Name);
+             return Task.CompletedTask;
+         }
+     }
+   - Dang ky Dependency Injection: Catalog.Infrastructure/DependencyInjection.cs
+     Dong: 23-48
+     Code setup:
+     services.AddMassTransit(x =>
+     {
+         x.SetKebabCaseEndpointNameFormatter();
+         x.AddConsumer<CategoryCreatedConsumer>();
+         x.UsingRabbitMq((ctx, cfg) =>
+         {
+             cfg.Host(rabbitHost, (ushort)rabbitPort, "/", h =>
+             {
+                 h.Username(rabbitUser);
+                 h.Password(rabbitPass);
+             });
+             cfg.ConfigureEndpoints(ctx);
+         });
+     });
+
+2. Co che phat va nhan su kien (Publish / Consume Flow):
+   - Khi tao moi Category thanh cong qua API POST /api/v1/categories (CAT-15):
+     Inject: IPublishEndpoint _publishEndpoint
+     Goi lenh:
+     await _publishEndpoint.Publish(new CategoryCreatedEvent
+     {
+         CategoryId = category.Id,
+         Name = category.Name,
+         Description = category.Description,
+         ParentId = category.ParentId,
+         Level = category.Level,
+         SortOrder = category.SortOrder,
+         CreatedAt = category.CreatedAt.UtcDateTime
+     }, cancellationToken);
+   - MassTransit tu dong serialize object thanh JSON, dinh tuyen qua RabbitMQ Exchange "category-created"
+   - CategoryCreatedConsumer nhan duoc message, ghi nhan log xac nhan su kien da phat va nhan thanh cong.
+   - Luu y quan trong ve Outbox: Da go bo co che EF Core Outbox Polling de loai bo vong lap vo tan retry ket noi database khi test RabbitMQ local.
+
+====================================================================================================
+PHAN C: CHI TIET 25 CHUC NANG CATS DA TRIEN KHAI
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+I. NHOM QUAN LY DANH MUC (CATEGORY)
+----------------------------------------------------------------------------------------------------
+
+1. CAT-15: Tao danh muc moi (Create Category)
+   - HTTP Method & Route: POST /api/v1/categories
+   - Quyen truy cap: Admin (Header X-User-Id: <uuid>)
+   - Controller File: Catalog.Api/Controllers/CategoriesController.cs
+     Ten ham: public async Task<IResult> CreateCategory([FromBody] CreateCategoryRequest request, CancellationToken cancellationToken)
+   - Database / Entity: _dbContext.Categories (AppDbContext)
+   - Logic Validate dac biet (Duy nhat ten category toan he thong):
+     Catalog.Api/Controllers/CategoriesController.cs (Dong 101-123):
+     bool isDuplicate = await _dbContext.Categories
+         .AsNoTracking()
+         .AnyAsync(c => !c.IsDeleted && c.Name.ToLower() == trimmedName.ToLower(), cancellationToken);
+     if (isDuplicate)
+     {
+         return _responseFactory.FailureResult(HttpContext, "Validation error.", 400,
+             $"Category with name '{trimmedName}' already exists.", "VAL_INVALID_INPUT");
+     }
+   - Event Phat di: Publish CategoryCreatedEvent qua IPublishEndpoint (Dong 147-157).
+   - Response: 201 Created voi CategoryDto.
+
+2. CAT-16: Sua danh muc (Update Category)
+   - HTTP Method & Route: PUT /api/v1/categories/{id}
+   - Quyen truy cap: Admin
+   - Controller File: Catalog.Api/Controllers/CategoriesController.cs
+     Ten ham: public async Task<IResult> UpdateCategory([FromRoute] Guid id, [FromBody] UpdateCategoryRequest request, CancellationToken cancellationToken)
+   - Logic Validate dac biet:
+     + Kiem tra ton tai: Tim category theo id va !IsDeleted trong _dbContext.Categories. Neu khong thay -> tra 404 CATEGORY_NOT_FOUND.
+     + Kiem tra trung ten voi cac category khac (Dong 193-214):
+       bool isDuplicate = await _dbContext.Categories
+           .AsNoTracking()
+           .AnyAsync(c => c.Id != id && !c.IsDeleted && c.Name.ToLower() == trimmedName.ToLower(), cancellationToken);
+       if (isDuplicate) return _responseFactory.FailureResult(..., "VAL_INVALID_INPUT");
+   - Cap nhat: Name, Description, Level, SortOrder, IsDisabled, UpdatedAt = UtcNow.
+   - Response: 200 OK.
+
+3. CAT-17: Xoa mem danh muc (Soft Delete Category)
+   - HTTP Method & Route: DELETE /api/v1/categories/{id}
+   - Quyen truy cap: Admin
+   - Controller File: Catalog.Api/Controllers/CategoriesController.cs
+     Ten ham: public async Task<IResult> DeleteCategory([FromRoute] Guid id, CancellationToken cancellationToken)
+   - Logic xu ly:
+     Catalog.Api/Controllers/CategoriesController.cs (Dong 250-268):
+     var category = await _dbContext.Categories.FirstOrDefaultAsync(c => c.Id == id && !c.IsDeleted, cancellationToken);
+     if (category == null) return 404 CATEGORY_NOT_FOUND;
+     category.IsDeleted = true;
+     category.UpdatedAt = DateTimeOffset.UtcNow;
+     await _dbContext.SaveChangesAsync(cancellationToken);
+   - Response: 200 OK voi { deleted: true, id }.
+
+4. CAT-18: Xem chi tiet danh muc (Get Category Detail)
+   - HTTP Method & Route: GET /api/v1/categories/{id}
+   - Quyen truy cap: Public
+   - Controller File: Catalog.Api/Controllers/CategoriesController.cs
+     Ten ham: public async Task<IResult> GetCategoryById([FromRoute] Guid id, CancellationToken cancellationToken)
+   - Service File: Catalog.Application/Services/Category/CategoryService.cs
+     Ten ham: public async Task<CategoryDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
+   - Logic: Query _dbContext.Categories theo Id, include parent/children va tra ve DTO.
+   - Response: 200 OK hoac 404 CATEGORY_NOT_FOUND.
+
+5. CAT-19: Danh sach & cay danh muc (List / Tree Categories)
+   - HTTP Method & Route: GET /api/v1/categories
+   - Query Params: parentId (Guid?), tree (bool), keyword (string?)
+   - Controller File: Catalog.Api/Controllers/CategoriesController.cs
+     Ten ham: public async Task<IResult> ListCategories([FromQuery] Guid? parentId, [FromQuery] bool tree, [FromQuery] string? keyword, CancellationToken cancellationToken)
+   - Service File: Catalog.Application/Services/Category/CategoryService.cs
+     Ten ham: public async Task<IReadOnlyList<CategoryItemDto>> GetCategoriesAsync(CategoryListQuery query, CancellationToken cancellationToken)
+   - Logic dac biet:
+     + Neu tree = true: De quy tao cay danh muc cha-con (Hierarchical tree structure).
+     + Neu tree = false: Tra ve danh sach phang (flat list) loc theo parentId hoac keyword.
+   - Response: 200 OK voi ApiResponse<IReadOnlyList<CategoryItemDto>>.
+
+----------------------------------------------------------------------------------------------------
+II. NHOM SELLER QUAN LY SAN PHAM
+----------------------------------------------------------------------------------------------------
+
+6. CAT-01: Tao san pham ban thuong (Create Product Draft)
+   - HTTP Method & Route: POST /api/v1/products
+   - Quyen truy cap: Seller (Header bat buoc: X-Seller-Id: <uuid>)
+   - Controller File: Catalog.Api/Controllers/ProductsController.cs
+     Ten ham: public async Task<IResult> CreateProduct([FromBody] CreateProductRequest request, CancellationToken cancellationToken)
+   - Service File: Catalog.Application/Services/Product/ProductService.cs
+     Ten ham: public async Task<ProductOperationResult<ProductDto>> CreateAsync(CreateProductCommand command, CancellationToken cancellationToken)
+   - Logic Validate dac biet:
+     Catalog.Application/Services/Product/ProductService.cs (Dong 339-366):
+     + Kiem tra CategoryId ton tai trong database va !IsDeleted. Neu sai -> InvalidCategory (400).
+     + Status mac dinh bat buoc luon la: ProductStatus.Draft.
+     + Gan quyen so huu SellerId tu identity nguoi goi.
+   - Response: 201 Created voi thong tin san pham nhap.
+
+7. CAT-02: Cap nhat thong tin san pham (Update Product)
+   - HTTP Method & Route: PATCH /api/v1/products/{id} (va PUT /api/v1/products/{id})
+   - Quyen truy cap: Seller chu so huu (Header X-Seller-Id)
+   - Controller File: Catalog.Api/Controllers/ProductsController.cs
+     Ten ham: public async Task<IResult> UpdateProduct([FromRoute] Guid id, [FromBody] UpdateProductRequest request, CancellationToken cancellationToken)
+   - Service File: Catalog.Application/Services/Product/ProductService.cs
+     Ten ham: public async Task<ProductOperationResult<ProductDto>> UpdateAsync(UpdateProductCommand command, CancellationToken cancellationToken)
+   - Logic Validate dac biet:
+     Catalog.Application/Services/Product/ProductService.cs (Dong 395-401):
+     if (product.SellerId != command.SellerId)
+     {
+         return new ProductOperationResult<ProductDto>(ProductOperationStatus.Forbidden, "You do not have permission to modify this product.");
+     }
+     + Khong cho phep doi Status qua API nay (tranh bo qua kiem tra anh/variant).
+   - Response: 200 OK voi ProductDto da cap nhat.
+
+8. CAT-03: Doi trang thai san pham (Change Product Status / Dang San)
+   - HTTP Method & Route: PATCH /api/v1/products/{id}/status
+   - Quyen truy cap: Seller chu so huu (Header X-Seller-Id)
+   - Controller File: Catalog.Api/Controllers/ProductsController.cs
+     Ten ham: public async Task<IResult> ChangeProductStatus([FromRoute] Guid id, [FromBody] ChangeProductStatusRequest request, CancellationToken cancellationToken)
+   - Service File: Catalog.Application/Services/Product/ProductService.cs
+     Ten ham: public async Task<ProductOperationResult<ProductDto>> ChangeProductStatusAsync(Guid productId, Guid currentSellerId, ChangeProductStatusRequest request, CancellationToken cancellationToken)
+   - Logic Validate dac biet (Rang buoc toi quan trong cua cuoc hop 28/10):
+     Catalog.Application/Services/Product/ProductService.cs (Dong 499-519):
+     if (newStatus == ProductStatus.Active)
+     {
+         var hasActiveVariant = product.Variants.Any(v => !v.IsDeleted && v.Status == VariantStatus.Active && v.Price.HasValue && v.Price.Value > 0);
+         if (!hasActiveVariant)
+         {
+             return new ProductOperationResult<ProductDto>(ProductOperationStatus.InvalidOperation,
+                 "Cannot activate product without at least one active variant with a valid price.");
+         }
+
+         var hasActiveImage = product.Images.Any(i => !i.IsDeleted && i.IsActive);
+         if (!hasActiveImage)
+         {
+             return new ProductOperationResult<ProductDto>(ProductOperationStatus.InvalidOperation,
+                 "Cannot activate product without at least one active product image.");
+         }
+
+         product.PublishedAt ??= DateTimeOffset.UtcNow; // Ghi nhan moc thoi gian dang san lan dau
+         product.StatusReason = null;
+     }
+     else if (newStatus == ProductStatus.Inactive)
+     {
+         product.StatusReason = ProductInactiveReason.SellerPaused;
+     }
+   - Response: 200 OK.
+
+9. CAT-04: Xoa mem san pham (Soft Delete Product)
+   - HTTP Method & Route: DELETE /api/v1/products/{id}
+   - Quyen truy cap: Seller chu so huu (Header X-Seller-Id)
+   - Controller File: Catalog.Api/Controllers/ProductsController.cs
+     Ten ham: public async Task<IResult> DeleteProduct([FromRoute] Guid id, CancellationToken cancellationToken)
+   - Service File: Catalog.Application/Services/Product/ProductService.cs
+     Ten ham: public async Task<ProductOperationResult<bool>> SoftDeleteAsync(Guid id, Guid currentSellerId, CancellationToken cancellationToken)
+   - Logic: Kiem tra quyen so huu -> Danh dau IsDeleted = true, UpdatedAt = UtcNow -> Luu database.
+   - Response: 200 OK { deleted: true }.
+
+10. CAT-44: Danh sach san pham cua Seller (Seller Products Search & Filter)
+    - HTTP Method & Route: GET /api/v1/seller/products
+    - Quyen truy cap: Seller (Header X-Seller-Id)
+    - Query Params: page, pageSize, keyword, status, saleType, sortBy
+    - Controller File: Catalog.Api/Controllers/SellerProductsController.cs
+      Ten ham: public async Task<IResult> GetSellerProducts([FromQuery] int page, [FromQuery] int pageSize, [FromQuery] string? keyword, [FromQuery] string? status, [FromQuery] string? saleType, [FromQuery] string? sortBy, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<PagedList<SellerProductListItemDto>> SearchSellerProductsAsync(Guid sellerId, SellerProductSearchQuery query, CancellationToken cancellationToken)
+    - Logic dac biet:
+      Catalog.Application/Services/Product/ProductService.cs (Dong 1131-1180):
+      + Chi truy van cac san pham thuoc SellerId hien tai: queryDb = queryDb.Where(p => p.SellerId == sellerId && !p.IsDeleted)
+      + Khac voi Buyer (chi thay Active), Seller thay duoc TOAN BO trang thai san pham: Draft, Active, Inactive.
+      + Tra ve thong ke tong so variant (TotalVariants), tong ton kho (TotalStock), khoang gia MinPrice - MaxPrice, va thumbnail dai dien.
+    - Response: 200 OK kem phan trang Pagination (pageIndex, pageSize, totalCount, totalPages).
+
+11. CAT-45: Chi tiet san pham cua Seller kem Variants (Seller Product Detail)
+    - HTTP Method & Route: GET /api/v1/seller/products/{id}
+    - Quyen truy cap: Seller chu so huu (Header X-Seller-Id)
+    - Controller File: Catalog.Api/Controllers/SellerProductsController.cs
+      Ten ham: public async Task<IResult> GetSellerProductDetail([FromRoute] Guid id, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<ProductOperationResult<SellerProductDetailDto>> GetSellerProductDetailAsync(Guid productId, Guid sellerId, CancellationToken cancellationToken)
+    - Logic dac biet:
+      Catalog.Application/Services/Product/ProductService.cs (Dong 1220-1280):
+      + Include day du Variants, Images, Attributes.
+      + Kiem tra dung SellerId so huu.
+      + Tra ve toan bo danh sach tat ca cac bien the cua san pham phuc vu man hinh chinh sua nhanh cua shop.
+    - Response: 200 OK voi SellerProductDetailDto.
+
+----------------------------------------------------------------------------------------------------
+III. NHOM QUAN LY BIEN THE / SKU
+----------------------------------------------------------------------------------------------------
+
+12. CAT-07: Them bien the cho san pham (Add Product Variant / SKU)
+    - HTTP Method & Route: POST /api/v1/products/{id}/variants
+    - Quyen truy cap: Seller chu so huu
+    - Controller File: Catalog.Api/Controllers/ProductsController.cs
+      Ten ham: public async Task<IResult> AddProductVariant([FromRoute] Guid id, [FromBody] CreateProductVariantRequest request, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<VariantOperationResult<VariantDetailDto>> AddVariantAsync(Guid productId, Guid currentSellerId, CreateProductVariantCommand command, CancellationToken cancellationToken)
+    - Logic Validate dac biet:
+      Catalog.Application/Services/Product/ProductService.cs (Dong 737-758):
+      + RANG BUOC 1: Toi da 10 bien the tren 1 san pham:
+        var currentVariantCount = await _dbContext.ProductVariants.CountAsync(v => v.ProductId == productId && !v.IsDeleted, cancellationToken);
+        if (currentVariantCount >= 10)
+        {
+            return new VariantOperationResult<VariantDetailDto>(VariantOperationStatus.MaxVariantsExceeded,
+                "A product cannot exceed 10 variants.");
+        }
+      + RANG BUOC 2: SkuCode duy nhat trong noi bo shop cua Seller:
+        var isDuplicateSku = await _dbContext.ProductVariants
+            .AnyAsync(v => !v.IsDeleted && v.SkuCode == command.SkuCode.Trim() && v.Product.SellerId == currentSellerId, cancellationToken);
+        if (isDuplicateSku)
+        {
+            return new VariantOperationResult<VariantDetailDto>(VariantOperationStatus.DuplicateSku,
+                $"A variant with SKU code '{command.SkuCode.Trim()}' already exists for your seller shop.");
+        }
+      + Tu dong dat bien the dau tien lam mac dinh (IsActive = true).
+    - Response: 200 OK voi VariantDetailDto.
+
+13. CAT-08: Sua bien the (Update Variant)
+    - HTTP Method & Route: PATCH /api/v1/variants/{id} (va PUT /api/v1/variants/{id})
+    - Quyen truy cap: Seller chu so huu
+    - Controller File: Catalog.Api/Controllers/VariantsController.cs
+      Ten ham: public async Task<IResult> UpdateVariant([FromRoute] Guid id, [FromBody] UpdateProductVariantRequest request, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<VariantOperationResult<VariantDetailDto>> UpdateVariantAsync(Guid variantId, Guid currentSellerId, UpdateProductVariantCommand command, CancellationToken cancellationToken)
+    - Logic: Cap nhat ten variant, gia (Price > 0), currency va danh sach Attributes.
+    - Response: 200 OK.
+
+14. CAT-09: Doi trang thai bien the (Change Variant Status)
+    - HTTP Method & Route: PATCH /api/v1/variants/{id}/status
+    - Quyen truy cap: Seller chu so huu
+    - Controller File: Catalog.Api/Controllers/VariantsController.cs
+      Ten ham: public async Task<IResult> ChangeVariantStatus([FromRoute] Guid id, [FromBody] ChangeVariantStatusRequest request, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<VariantOperationResult<VariantDetailDto>> ChangeVariantStatusAsync(Guid variantId, Guid currentSellerId, ChangeVariantStatusRequest request, CancellationToken cancellationToken)
+    - Logic: Chuyen giua Active va Inactive (vi du: StatusReason = "OutOfStock").
+    - Response: 200 OK.
+
+15. CAT-10: Dat bien the mac dinh (Set Default Variant)
+    - HTTP Method & Route: PUT /api/v1/products/{id}/default-variant
+    - Quyen truy cap: Seller chu so huu
+    - Controller File: Catalog.Api/Controllers/ProductsController.cs
+      Ten ham: public async Task<IResult> SetDefaultVariant([FromRoute] Guid id, [FromBody] SetDefaultVariantRequest request, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<VariantOperationResult<Guid>> SetDefaultVariantAsync(Guid productId, Guid currentSellerId, Guid targetVariantId, CancellationToken cancellationToken)
+    - Logic dac biet (Dong 1024-1045):
+      Dat tat ca variant khac IsActive = false, dat targetVariant IsActive = true.
+    - Response: 200 OK.
+
+16. CAT-11: Xoa bien the (Soft Delete Variant)
+    - HTTP Method & Route: DELETE /api/v1/variants/{id}
+    - Quyen truy cap: Seller chu so huu
+    - Controller File: Catalog.Api/Controllers/VariantsController.cs
+      Ten ham: public async Task<IResult> DeleteVariant([FromRoute] Guid id, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<VariantOperationResult<bool>> SoftDeleteVariantAsync(Guid variantId, Guid currentSellerId, CancellationToken cancellationToken)
+    - Logic Validate dac biet (Dong 1076-1092):
+      + RANG BUOC 1: Chan xoa neu da co don hang lien ket (PurchaseRecords):
+        var hasOrder = await _dbContext.PurchaseRecords.AnyAsync(p => p.ProductId == variant.ProductId, cancellationToken);
+        if (hasOrder)
+        {
+            return new VariantOperationResult<bool>(VariantOperationStatus.HasOrders,
+                "Cannot delete a variant that has existing orders. You can set its status to INACTIVE instead.");
+        }
+      + RANG BUOC 2: Chan xoa bien the duy nhat con lai:
+        var remainingActiveCount = await _dbContext.ProductVariants.CountAsync(v => v.ProductId == variant.ProductId && !v.IsDeleted, cancellationToken);
+        if (remainingActiveCount <= 1)
+        {
+            return new VariantOperationResult<bool>(VariantOperationStatus.LastVariant,
+                "Cannot delete the last remaining variant of a product.");
+        }
+    - Response: 200 OK { deleted: true }.
+
+17. CAT-42: Xem chi tiet 1 bien the (Get Variant Detail)
+    - HTTP Method & Route: GET /api/v1/variants/{id}
+    - Controller File: Catalog.Api/Controllers/VariantsController.cs
+      Ten ham: public async Task<IResult> GetVariantById([FromRoute] Guid id, CancellationToken cancellationToken)
+    - Response: 200 OK voi chi tiet SKU, gia, ten, hinh anh va attributes.
+
+----------------------------------------------------------------------------------------------------
+IV. NHOM QUAN LY HINH ANH
+----------------------------------------------------------------------------------------------------
+
+18. CAT-12: Tai anh san pham len Cloudinary (Upload Product Image)
+    - HTTP Method & Route: POST /api/v1/products/{id}/images
+    - Content-Type: multipart/form-data
+    - Parameters: File (IFormFile), AltText (string?), SortOrder (short), VariantId (Guid?), SellerId (Guid?)
+    - Controller File: Catalog.Api/Controllers/ProductsController.cs
+      Ten ham: public async Task<IResult> UploadProductImage([FromRoute] Guid id, [FromForm] UploadProductImageRequest request, [FromQuery] Guid? sellerId, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<ProductOperationResult<ProductImageDto>> AddProductImageAsync(Guid productId, Guid currentSellerId, AddProductImageCommand command, CancellationToken cancellationToken)
+    - Logic:
+      + Validate file duoi mo rong, dung luong <= 5MB.
+      + Upload len Cloudinary qua IImageStorageService -> nhan link HTTPS.
+      + Luu database PostgreSQL: ProductImages.
+    - Response: 200 OK voi ProductImageDto (Id, Url, AltText, SortOrder).
+
+19. CAT-13: Xoa anh san pham (Delete Product Image)
+    - HTTP Method & Route: DELETE /api/v1/products/{id}/images/{imageId}
+    - Controller File: Catalog.Api/Controllers/ProductsController.cs
+      Ten ham: public async Task<IResult> DeleteProductImage([FromRoute] Guid id, [FromRoute] Guid imageId, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<ProductOperationResult<bool>> DeleteProductImageAsync(Guid productId, Guid imageId, Guid currentSellerId, CancellationToken cancellationToken)
+    - Logic: Kiem tra anh thuoc san pham, kiem tra quyen seller so huu -> IsDeleted = true -> Luu DB.
+    - Response: 200 OK.
+
+----------------------------------------------------------------------------------------------------
+V. NHOM BUYER XEM & TIM KIEM SAN PHAM
+----------------------------------------------------------------------------------------------------
+
+20. CAT-05: Khach xem chi tiet san pham (Buyer Product Detail)
+    - HTTP Method & Route: GET /api/v1/products/{id}
+    - Quyen truy cap: Public
+    - Controller File: Catalog.Api/Controllers/ProductsController.cs
+      Ten ham: public async Task<IResult> GetProductById([FromRoute] Guid id, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<ProductDetailDto?> GetDetailAsync(Guid id, CancellationToken cancellationToken)
+    - Logic bao ve:
+      Catalog.Application/Services/Product/ProductService.cs (Dong 147-151):
+      + Chi hien thi san pham khi Status == Active va !IsDeleted. Khach hang khong bao gio nhin thay hang Draft hoac Inactive.
+      + Chi tra ve cac Variants va Images chua bi xoa mem (!IsDeleted).
+      + Lay AvgRating va ReviewCount tu bang ProductRatingStats.
+    - Response: 200 OK voi ProductDetailDto.
+
+21. CAT-06: Khach xem danh sach san pham tren san (Buyer Product List)
+    - HTTP Method & Route: GET /api/v1/products
+    - Query Params: page, pageSize, keyword, categoryId, sellerId, saleType, sortBy
+    - Controller File: Catalog.Api/Controllers/ProductsController.cs
+      Ten ham: public async Task<IResult> ListProducts([FromQuery] int page, [FromQuery] int pageSize, [FromQuery] string? keyword, [FromQuery] Guid? categoryId, [FromQuery] Guid? sellerId, [FromQuery] SaleType? saleType, [FromQuery] string? sortBy, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<PagedList<ProductListItemDto>> SearchAsync(ProductListQuery query, CancellationToken cancellationToken)
+    - Logic loc cung:
+      Catalog.Application/Services/Product/ProductService.cs (Dong 67):
+      queryDb = queryDb.Where(p => !p.IsDeleted && p.Status == ProductStatus.Active);
+    - Response: 200 OK kem phan trang Pagination.
+
+22. CAT-20 + CAT-21: Tim kiem & Loc san pham nang cao (Advanced Product Search)
+    - HTTP Method & Route: GET /api/v1/products/search
+    - Query Params: keyword, categoryId, sellerId, minPrice, maxPrice, brand, minRating, sortBy (newest, priceAsc, priceDesc, rating)
+    - Controller File: Catalog.Api/Controllers/ProductsController.cs
+      Ten ham: public async Task<IResult> SearchProducts([FromQuery] int page, [FromQuery] int pageSize, [FromQuery] string? keyword, [FromQuery] Guid? categoryId, [FromQuery] Guid? sellerId, [FromQuery] decimal? minPrice, [FromQuery] decimal? maxPrice, [FromQuery] string? brand, [FromQuery] decimal? minRating, [FromQuery] string? sortBy, CancellationToken cancellationToken)
+    - Logic Validate:
+      + Kiem tra khoang gia: minPrice > maxPrice -> Tra loi 400 VAL_INVALID_PRICE_RANGE.
+      + Loc theo gia: Tim san pham co it nhat 1 variant thoa man minPrice <= variant.Price <= maxPrice.
+      + Loc theo so sao danh gia: queryDb.Where(p => p.RatingStats != null && p.RatingStats.AvgRating >= minRating).
+    - Response: 200 OK voi PagedData<ProductListItemDto>.
+
+----------------------------------------------------------------------------------------------------
+VI. NHOM API NOI BO LIEN SERVICE (INTERNAL APIS)
+----------------------------------------------------------------------------------------------------
+
+23. CAT-24: Lay thong tin nhieu bien the cho Cart / Order (Batch Get Variants)
+    - HTTP Method & Route: POST /api/v1/internal/variants
+    - Controller File: Catalog.Api/Controllers/InternalVariantsController.cs
+      Ten ham: public async Task<IResult> GetVariantsBatch([FromBody] BatchGetVariantsRequest request, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<BatchVariantResponse> GetVariantsBatchAsync(BatchGetVariantsRequest request, CancellationToken cancellationToken)
+    - Payload nhan vao:
+      {
+        "variantIds": [ "uuid1", "uuid2" ]
+      }
+    - Du lieu tra ve:
+      Tra ve day du thong tin san pham: variantId, productId, sellerId, skuCode, variantName, productName, price, currency, status, productStatus, saleType, primaryImageUrl, attributes, va danh sach notFoundIds.
+      Giai phong Cart Service khong phai goi nhieu request lat nhat.
+    - Response: 200 OK.
+
+24. CAT-39: Kiem tra trang thai mua duoc cho Checkout (Check Purchasable Status)
+    - HTTP Method & Route: POST /api/v1/internal/variants/check-status
+    - Controller File: Catalog.Api/Controllers/InternalVariantsController.cs
+      Ten ham: public async Task<IResult> CheckVariantStatus([FromBody] CheckVariantStatusRequest request, CancellationToken cancellationToken)
+    - Service File: Catalog.Application/Services/Product/ProductService.cs
+      Ten ham: public async Task<CheckVariantStatusResponse> CheckVariantStatusBatchAsync(CheckVariantStatusRequest request, CancellationToken cancellationToken)
+    - Payload nhan vao:
+      {
+        "variantIds": [ "uuid1" ],
+        "purpose": "CHECKOUT" // (Hoac CART, AUCTION)
+      }
+    - Logic Kiem tra dac biet (Dong 260-325):
+      + Hien thi isPurchasable = true khi:
+        product.Status == ProductStatus.Active && variant.Status == VariantStatus.Active && !product.IsDeleted && !variant.IsDeleted && variant.Price.HasValue && variant.Price.Value > 0.
+      + Neu isPurchasable = false, tra ve ma ly do chi tiet:
+        NOT_FOUND, PRODUCT_DELETED, PRODUCT_NOT_ACTIVE, VARIANT_DELETED, VARIANT_NOT_ACTIVE, PRICE_MISSING, NOT_FOR_REGULAR_SALE, NOT_FOR_AUCTION.
+    - Response: 200 OK.
+
+====================================================================================================
+PHAN D: BANG TONG HOP MA LOI TOAN HE THONG (ERROR CODES)
+====================================================================================================
+
+| HTTP Status | Ma loi SCREAMING_SNAKE_CASE | Y nghia & Tinh huong xuat hien |
+|:-----------:|:----------------------------|:--------------------------------|
+| 400 | VAL_INVALID_INPUT | Ten rong, du lieu dau vao sai, trung ten category toan he thong |
+| 400 | VAL_INVALID_PAGINATION | page < 1 hoac pageSize khong nam trong khoang 1..100 |
+| 400 | VAL_INVALID_PRICE_RANGE | minPrice > maxPrice trong API tim kiem CAT-20 |
+| 401 | UNAUTHORIZED | Thieu header dinh danh seller (X-Seller-Id) |
+| 403 | FORBIDDEN | Thao tac sua/xoa san pham khong thuoc quyen so huu cua minh |
+| 404 | PRODUCT_NOT_FOUND | Khong tim thay san pham trong database |
+| 404 | CATEGORY_NOT_FOUND | Khong tim thay danh muc trong database |
+| 404 | VARIANT_NOT_FOUND | Khong tim thay bien the SKU |
+| 409 | DUPLICATE_SKU | Trung ma SKU trong noi bo shop cua cung 1 Seller |
+| 409 | CONFLICT (HAS_ORDERS) | Chan xoa bien the da tung phat sinh don hang (PurchaseRecords) |
+| 409 | CONFLICT (LAST_VARIANT) | Chan xoa bien the duy nhat con lai cua san pham |
+| 500 | INTERNAL_SERVER_ERROR | Loi may chu khong mong muon (duoc dong goi ProblemDetails qua GlobalExceptionHandlerMiddleware) |
+
+====================================================================================================
+KET THUC TAI LIEU
+====================================================================================================
