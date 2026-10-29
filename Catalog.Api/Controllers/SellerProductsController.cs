@@ -11,7 +11,6 @@ using Catalog.Application.Services.Product;
 using Catalog.Domain.Enums;
 
 [ApiController]
-[Route("api/v1/catalog/seller/products")]
 [Route("api/v1/seller/products")]
 [Produces("application/json")]
 public sealed class SellerProductsController : ControllerBase

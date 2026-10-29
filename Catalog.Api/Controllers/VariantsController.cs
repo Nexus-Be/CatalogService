@@ -10,7 +10,6 @@ using Catalog.Api.Responses;
 using Catalog.Application.Services.Product;
 
 [ApiController]
-[Route("api/v1/catalog/variants")]
 [Route("api/v1/variants")]
 [Produces("application/json")]
 public sealed class VariantsController : ControllerBase

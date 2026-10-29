@@ -39,7 +39,6 @@ public sealed class UploadProductImageRequest
 }
 
 [ApiController]
-[Route("api/v1/catalog/products")]
 [Route("api/v1/products")]
 [Produces("application/json")]
 public sealed class ProductsController : ControllerBase

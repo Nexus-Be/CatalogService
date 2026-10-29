@@ -12,7 +12,6 @@ using Catalog.Application.Services.Product;
 
 [ApiController]
 [Route("api/v1/internal/variants")]
-[Route("api/v1/catalog/variants")]
 [Produces("application/json")]
 public sealed class InternalVariantsController : ControllerBase
 {

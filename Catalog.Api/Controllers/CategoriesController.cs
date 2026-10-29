@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MassTransit;
-using Catalog.Api.Mock;
 using Catalog.Api.Responses;
 using Catalog.Application.Common.Contracts.Events;
 using Catalog.Application.Interfaces;
@@ -19,24 +18,21 @@ public sealed record CreateCategoryRequest(string Name, string? Description, Gui
 public sealed record UpdateCategoryRequest(string Name, string? Description, short Level, int SortOrder, bool IsDisabled);
 
 [ApiController]
-[Route("api/v1/catalog/categories")]
+[Route("api/v1/categories")]
 [Produces("application/json")]
 public sealed class CategoriesController : ControllerBase
 {
-    private readonly MockCatalogStore _store;
     private readonly IApiResponseFactory _responseFactory;
     private readonly ICategoryService _categoryService;
     private readonly ICatalogDbContext _dbContext;
     private readonly IPublishEndpoint _publishEndpoint;
 
     public CategoriesController(
-        MockCatalogStore store,
         ICategoryService categoryService,
         ICatalogDbContext dbContext,
         IPublishEndpoint publishEndpoint,
         IApiResponseFactory responseFactory)
     {
-        _store = store;
         _categoryService = categoryService;
         _dbContext = dbContext;
         _publishEndpoint = publishEndpoint;
@@ -97,18 +93,10 @@ public sealed class CategoriesController : ControllerBase
 
         var trimmedName = request.Name.Trim();
 
-        // Ràng buộc cuộc họp 28/10: Tên category không được phép trùng với nhau
-        bool isDuplicate = false;
-        try
-        {
-            isDuplicate = await _dbContext.Categories
-                .AsNoTracking()
-                .AnyAsync(c => !c.IsDeleted && c.Name.ToLower() == trimmedName.ToLower(), cancellationToken);
-        }
-        catch
-        {
-            isDuplicate = _store.GetCategories().Any(c => c.Name.Equals(trimmedName, StringComparison.OrdinalIgnoreCase));
-        }
+        // Ràng buộc tên category không được phép trùng nhau trên toàn hệ thống
+        bool isDuplicate = await _dbContext.Categories
+            .AsNoTracking()
+            .AnyAsync(c => !c.IsDeleted && c.Name.ToLower() == trimmedName.ToLower(), cancellationToken);
 
         if (isDuplicate)
         {
@@ -130,20 +118,15 @@ public sealed class CategoriesController : ControllerBase
             Level = request.Level,
             SortOrder = request.SortOrder,
             IsDisabled = false,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            IsDeleted = false
         };
 
-        try
-        {
-            _dbContext.Categories.Add(category);
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (Exception)
-        {
-            // Database sync deferred nếu Neon DB đang sleep hoặc bận
-        }
+        _dbContext.Categories.Add(category);
+        await _dbContext.SaveChangesAsync(cancellationToken);
 
-        // Bắn sự kiện CategoryCreatedEvent qua Message Broker (RabbitMQ / In-Memory)
+        // Bắn sự kiện CategoryCreatedEvent qua Message Broker
         await _publishEndpoint.Publish(new CategoryCreatedEvent
         {
             CategoryId = category.Id,
@@ -155,7 +138,6 @@ public sealed class CategoriesController : ControllerBase
             CreatedAt = category.CreatedAt.UtcDateTime
         }, cancellationToken);
 
-        var created = _store.CreateCategory(request.Name, request.Description, request.ParentId, request.Level, request.SortOrder);
         var dto = new CategoryDto(
             category.Id,
             category.ParentId,
@@ -188,18 +170,22 @@ public sealed class CategoriesController : ControllerBase
 
         var trimmedName = request.Name.Trim();
 
-        // Ràng buộc cuộc họp 28/10: Tên category không được phép trùng với nhau
-        bool isDuplicate = false;
-        try
+        var dbCategory = await _dbContext.Categories.FirstOrDefaultAsync(c => c.Id == id && !c.IsDeleted, cancellationToken);
+        if (dbCategory == null)
         {
-            isDuplicate = await _dbContext.Categories
-                .AsNoTracking()
-                .AnyAsync(c => c.Id != id && !c.IsDeleted && c.Name.ToLower() == trimmedName.ToLower(), cancellationToken);
+            return _responseFactory.FailureResult(
+                HttpContext,
+                title: "Category not found.",
+                status: StatusCodes.Status404NotFound,
+                detail: $"Category with ID '{id}' was not found in the system.",
+                errorCode: "CATEGORY_NOT_FOUND"
+            );
         }
-        catch
-        {
-            isDuplicate = _store.GetCategories().Any(c => c.Id != id && c.Name.Equals(trimmedName, StringComparison.OrdinalIgnoreCase));
-        }
+
+        // Ràng buộc tên category không được phép trùng với category khác
+        bool isDuplicate = await _dbContext.Categories
+            .AsNoTracking()
+            .AnyAsync(c => c.Id != id && !c.IsDeleted && c.Name.ToLower() == trimmedName.ToLower(), cancellationToken);
 
         if (isDuplicate)
         {
@@ -212,47 +198,34 @@ public sealed class CategoriesController : ControllerBase
             );
         }
 
-        var updated = _store.UpdateCategory(id, request.Name, request.Description, request.Level, request.SortOrder, request.IsDisabled);
-        if (updated == null)
-        {
-            return _responseFactory.FailureResult(
-                HttpContext,
-                title: "Category not found.",
-                status: StatusCodes.Status404NotFound,
-                detail: $"Category with ID '{id}' was not found in the system.",
-                errorCode: "CATEGORY_NOT_FOUND"
-            );
-        }
+        dbCategory.Name = trimmedName;
+        dbCategory.Description = request.Description?.Trim();
+        dbCategory.Level = request.Level;
+        dbCategory.SortOrder = request.SortOrder;
+        dbCategory.IsDisabled = request.IsDisabled;
+        dbCategory.UpdatedAt = DateTimeOffset.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
 
-        try
-        {
-            var dbCategory = await _dbContext.Categories.FirstOrDefaultAsync(c => c.Id == id && !c.IsDeleted, cancellationToken);
-            if (dbCategory != null)
-            {
-                dbCategory.Name = trimmedName;
-                dbCategory.Description = request.Description?.Trim();
-                dbCategory.Level = request.Level;
-                dbCategory.SortOrder = request.SortOrder;
-                dbCategory.IsDisabled = request.IsDisabled;
-                dbCategory.UpdatedAt = DateTimeOffset.UtcNow;
-                await _dbContext.SaveChangesAsync(cancellationToken);
-            }
-        }
-        catch
-        {
-            // Database sync deferred
-        }
+        var dto = new CategoryDto(
+            dbCategory.Id,
+            dbCategory.ParentId,
+            dbCategory.Name,
+            dbCategory.Description,
+            dbCategory.Level,
+            dbCategory.SortOrder,
+            dbCategory.IsDisabled
+        );
 
-        return _responseFactory.SuccessResult(HttpContext, updated, "Category updated successfully.");
+        return _responseFactory.SuccessResult(HttpContext, dto, "Category updated successfully.");
     }
 
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-    public IResult DeleteCategory([FromRoute] Guid id)
+    public async Task<IResult> DeleteCategory([FromRoute] Guid id, CancellationToken cancellationToken = default)
     {
-        var deleted = _store.DeleteCategory(id);
-        if (!deleted)
+        var category = await _dbContext.Categories.FirstOrDefaultAsync(c => c.Id == id && !c.IsDeleted, cancellationToken);
+        if (category == null)
         {
             return _responseFactory.FailureResult(
                 HttpContext,
@@ -262,6 +235,10 @@ public sealed class CategoriesController : ControllerBase
                 errorCode: "CATEGORY_NOT_FOUND"
             );
         }
+
+        category.IsDeleted = true;
+        category.UpdatedAt = DateTimeOffset.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
 
         return _responseFactory.SuccessResult(HttpContext, new { deleted = true, id }, "Category deleted successfully.");
     }

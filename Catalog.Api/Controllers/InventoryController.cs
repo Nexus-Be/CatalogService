@@ -9,7 +9,7 @@ using Catalog.Api.Responses;
 public sealed record AdjustInventoryRequest(int QuantityChange);
 
 [ApiController]
-[Route("api/v1/catalog/inventory")]
+[Route("api/v1/inventory")]
 [Produces("application/json")]
 public sealed class InventoryController : ControllerBase
 {
