@@ -1,0 +1,27 @@
+services:
+  postgres-catalog:
+    image: postgres:16-alpine
+    container_name: nexus-postgres-catalog
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: category_db
+    ports:
+      - "${CATALOG_DB_PORT:-5434}:5432"
+    volumes:
+      - postgres_catalog_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d category_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_catalog_data:
+    name: nexus-local_postgres_catalog_data
+
+networks:
+  default:
+    name: nexus-network
+    external: true

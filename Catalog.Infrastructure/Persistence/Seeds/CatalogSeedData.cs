@@ -383,5 +383,103 @@ public static class CatalogSeedData
                 IsDeleted = false
             }
         );
+
+        // 6. Product Variant Attributes
+        modelBuilder.Entity<ProductVariantAttribute>().HasData(
+            new ProductVariantAttribute
+            {
+                Id = Guid.Parse("11110000-0000-0000-0000-000000000001"),
+                VariantId = variant1Id,
+                AttrName = "Màu Sắc",
+                AttrValue = "Midnight Black",
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate,
+                IsDeleted = false
+            },
+            new ProductVariantAttribute
+            {
+                Id = Guid.Parse("11110000-0000-0000-0000-000000000002"),
+                VariantId = variant1Id,
+                AttrName = "Dung Lượng",
+                AttrValue = "256GB",
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate,
+                IsDeleted = false
+            },
+            new ProductVariantAttribute
+            {
+                Id = Guid.Parse("22110000-0000-0000-0000-000000000001"),
+                VariantId = variant2Id,
+                AttrName = "Kích Thước",
+                AttrValue = "L",
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate,
+                IsDeleted = false
+            },
+            new ProductVariantAttribute
+            {
+                Id = Guid.Parse("33110000-0000-0000-0000-000000000001"),
+                VariantId = variant3Id,
+                AttrName = "Dung Tích",
+                AttrValue = "1.7L",
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate,
+                IsDeleted = false
+            }
+        );
+
+        // 7. Purchase Record (Buyer purchased Product 3 via SubOrder)
+        var buyerUserId = Guid.Parse("dddddddd-4444-4444-4444-444444444444");
+        var subOrderId = Guid.Parse("02000000-0000-0000-0000-000000000001");
+        var purchaseRecordId = Guid.Parse("33400000-0000-0000-0000-000000000001");
+
+        modelBuilder.Entity<PurchaseRecord>().HasData(
+            new PurchaseRecord
+            {
+                Id = purchaseRecordId,
+                BuyerId = buyerUserId,
+                OrderId = subOrderId,
+                ProductId = product3Id,
+                CompletedAt = seedDate,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate,
+                IsDeleted = false
+            }
+        );
+
+        // 8. Product Review
+        modelBuilder.Entity<ProductReview>().HasData(
+            new ProductReview
+            {
+                Id = Guid.Parse("33500000-0000-0000-0000-000000000001"),
+                PurchaseRecordId = purchaseRecordId,
+                ProductId = product3Id,
+                BuyerId = buyerUserId,
+                Rating = 5,
+                Comment = "Ấm đun nước rất nhanh, giữ nhiệt tốt và điều khiển app tiện lợi.",
+                Status = ReviewStatus.Published,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate,
+                IsDeleted = false
+            }
+        );
+
+        // 9. Audit Log
+        modelBuilder.Entity<AuditLog>().HasData(
+            new AuditLog
+            {
+                Id = Guid.Parse("70000000-bbbb-cccc-dddd-000000000001"),
+                ServiceName = "Catalog",
+                TraceId = "trace-seed-catalog-001",
+                UserId = sellerUserId.ToString(),
+                UserName = "seller@nexus.com",
+                Action = AuditAction.ProductCreate,
+                EntityName = "Product",
+                EntityId = product1Id.ToString(),
+                NewValues = "{\"Name\": \"Smartphone Nexus X Pro 256GB\", \"Status\": \"Active\"}",
+                CreatedAt = seedDate,
+                IsSynced = true
+            }
+        );
     }
 }

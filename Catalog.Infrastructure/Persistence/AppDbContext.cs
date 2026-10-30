@@ -1,6 +1,5 @@
 namespace Catalog.Infrastructure.Persistence;
 
-using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Catalog.Application.Interfaces;
 using Catalog.Domain.Entities;
@@ -26,10 +25,5 @@ public class AppDbContext : DbContext, ICatalogDbContext
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
         Seeds.CatalogSeedData.SeedAll(modelBuilder);
-
-        // MassTransit Transactional Outbox entities
-        modelBuilder.AddInboxStateEntity();
-        modelBuilder.AddOutboxMessageEntity();
-        modelBuilder.AddOutboxStateEntity();
     }
 }

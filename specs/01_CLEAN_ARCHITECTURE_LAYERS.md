@@ -78,12 +78,12 @@ Catalog.sln
 1. **Giao tiếp đồng bộ (RESTful)**:
    - `Catalog.Api/Controllers/`: Thin Dispatcher Controller, chỉ nhận request, gọi Service Interface trong Application, trả về `IActionResult`. Tuyệt đối cấm logic nghiệp vụ, cấm map anonymous object, cấm khai báo class DTO trong file controller.
    - `Catalog.Application/Services/{Feature}/`: Mỗi feature (`Product`, `Category`...) chứa `I{Feature}Service.cs`, `{Feature}Service.cs`, và Request/Response DTOs dùng chung cho Controller.
-2. **Giao tiếp bất đồng bộ (RabbitMQ MassTransit)**:
-   - `Catalog.Application/Contracts/`: Chứa các Integration Events (ví dụ: `StockReservedIntegrationEvent`, `StockReleasedIntegrationEvent`).
-   - `Catalog.Infrastructure/Consumers/`: Chứa các MassTransit Consumer triển khai `IConsumer<TEvent>`.
+2. **Bãi bỏ hoàn toàn gRPC & Message Broker**:
+   - Không sử dụng RabbitMQ, MassTransit, Saga giữ kho phân tán hay Outbox tables.
+   - Toàn bộ giao tiếp sản phẩm và danh mục chuyển sang 100% RESTful Web API (`CategoriesController.cs`, `ProductsController.cs`).
 3. **Quản lý Dependency Injection**:
    - `Catalog.Application/DependencyInjection.cs`: Đăng ký toàn bộ Application Services.
-   - `Catalog.Infrastructure/DependencyInjection.cs`: Đăng ký `AppDbContext`, MassTransit Bus, Consumers, và các dịch vụ hạ tầng.
+   - `Catalog.Infrastructure/DependencyInjection.cs`: Đăng ký `AppDbContext` (hiện thực `ICatalogDbContext`) và các dịch vụ hạ tầng.
 4. **Validation**:
    - Input format validation đặt tại Request DTOs qua Data Annotations (`[Required]`, `[Range]`...).
    - Business validation đặt tại Application Services hoặc Domain Exceptions.
