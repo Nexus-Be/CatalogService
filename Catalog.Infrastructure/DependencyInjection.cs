@@ -5,6 +5,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Catalog.Application.Interfaces;
 using Catalog.Infrastructure.Persistence;
+using Catalog.Infrastructure.Services.Common;
+using Catalog.Infrastructure.Services.Fulfillment;
 
 public static class DependencyInjection
 {
@@ -14,13 +16,33 @@ public static class DependencyInjection
             ?? configuration["CONNECTION_STRING"]
             ?? configuration["CATALOG_CONNECTION_STRING"]
             ?? configuration["CATALOG_DB_CONNECTION"]
-            ?? "Host=localhost;Port=5434;Database=category_db;Username=postgres;Password=postgres";
+            ?? Environment.GetEnvironmentVariable("CATALOG_CONNECTION_STRING")
+            ?? Environment.GetEnvironmentVariable("CONNECTION_STRING");
+
+        if (string.IsNullOrWhiteSpace(rawConnection) || rawConnection.Contains("REPLACE_WITH"))
+        {
+            throw new InvalidOperationException("Database connection string for CatalogService is not configured. Set 'ConnectionStrings:DefaultConnection' or environment variable 'CATALOG_CONNECTION_STRING'.");
+        }
         var connectionString = NormalizeConnectionString(rawConnection);
 
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(connectionString));
 
         services.AddScoped<ICatalogDbContext>(sp => sp.GetRequiredService<AppDbContext>());
+
+        // Internal Fulfillment Client
+        var fulfillmentBaseUrl = Environment.GetEnvironmentVariable("FULFILLMENT_SERVICE_URL")
+            ?? configuration["FULFILLMENT_SERVICE_URL"]
+            ?? configuration["Services:Fulfillment:BaseUrl"]
+            ?? configuration["FulfillmentService:BaseUrl"]
+            ?? "http://localhost:8006/";
+
+        services.AddTransient<InternalServiceAuthHandler>();
+        services.AddHttpClient<IFulfillmentInternalClient, FulfillmentInternalClient>(client =>
+        {
+            client.BaseAddress = new Uri(fulfillmentBaseUrl.TrimEnd('/') + "/");
+            client.Timeout = TimeSpan.FromSeconds(10);
+        }).AddHttpMessageHandler<InternalServiceAuthHandler>();
 
         return services;
     }

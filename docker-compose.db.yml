@@ -1,3 +1,5 @@
+name: nexus-db-catalog
+
 services:
   postgres-catalog:
     image: postgres:16-alpine
