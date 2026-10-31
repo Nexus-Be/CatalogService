@@ -7,9 +7,9 @@
 
 ## 2. 4-Layer Clean Architecture
 * `Catalog.Domain`: Entities (`Product`, `Category`, `ProductVariant`), Enums (`ProductStatus`, `CategoryStatus`), Exceptions (`CatalogDomainException`).
-* `Catalog.Application`: Use cases in `Services/{Feature}/`, interface `ICatalogDbContext`, request/response records, typed client interfaces (`Interfaces/IFulfillmentInternalClient.cs`).
-* `Catalog.Infrastructure`: `AppDbContext`, EF Core configurations, migrations, and typed REST client `FulfillmentInternalClient`.
-* `Catalog.Api`: Thin controllers in `Controllers/Public/` and `Controllers/Internal/`, middlewares, extensions, composition root (`Program.cs`).
+* `Catalog.Application`: Use cases in `Services/{Feature}/`, interface `ICatalogDbContext`, request/response records, typed client interfaces (`Interfaces/IFulfillmentClient.cs`).
+* `Catalog.Infrastructure`: `AppDbContext`, EF Core configurations, migrations, and typed REST client `FulfillmentClient`.
+* `Catalog.Api`: Thin controllers in `Controllers/Public/`, middlewares, extensions, composition root (`Program.cs`).
 
 ## 3. Feature Co-Location (Mandatory)
 * `Services/Product/`: `IProductService.cs`, `ProductService.cs`, `ProductRequests.cs`, `ProductResponses.cs`.

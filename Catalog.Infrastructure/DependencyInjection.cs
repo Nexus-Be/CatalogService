@@ -37,12 +37,13 @@ public static class DependencyInjection
             ?? configuration["FulfillmentService:BaseUrl"]
             ?? "http://localhost:8006/";
 
-        services.AddTransient<InternalServiceAuthHandler>();
-        services.AddHttpClient<IFulfillmentInternalClient, FulfillmentInternalClient>(client =>
+        // Internal service key handler is temporarily disabled. Inter-service calls use plain REST routes.
+        // services.AddTransient<InternalServiceAuthHandler>();
+        services.AddHttpClient<IFulfillmentClient, FulfillmentClient>(client =>
         {
             client.BaseAddress = new Uri(fulfillmentBaseUrl.TrimEnd('/') + "/");
             client.Timeout = TimeSpan.FromSeconds(10);
-        }).AddHttpMessageHandler<InternalServiceAuthHandler>();
+        });
 
         return services;
     }

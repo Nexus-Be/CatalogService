@@ -14,11 +14,11 @@ using Catalog.Domain.Exceptions;
 public sealed class ProductService : IProductService
 {
     private readonly ICatalogDbContext _dbContext;
-    private readonly IFulfillmentInternalClient _fulfillmentClient;
+    private readonly IFulfillmentClient _fulfillmentClient;
 
     public ProductService(
         ICatalogDbContext dbContext,
-        IFulfillmentInternalClient fulfillmentClient)
+        IFulfillmentClient fulfillmentClient)
     {
         _dbContext = dbContext;
         _fulfillmentClient = fulfillmentClient;

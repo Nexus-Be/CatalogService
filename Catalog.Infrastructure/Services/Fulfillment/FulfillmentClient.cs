@@ -8,12 +8,12 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Catalog.Application.Interfaces;
 
-public sealed class FulfillmentInternalClient : IFulfillmentInternalClient
+public sealed class FulfillmentClient : IFulfillmentClient
 {
     private readonly HttpClient _httpClient;
-    private readonly ILogger<FulfillmentInternalClient> _logger;
+    private readonly ILogger<FulfillmentClient> _logger;
 
-    public FulfillmentInternalClient(HttpClient httpClient, ILogger<FulfillmentInternalClient> logger)
+    public FulfillmentClient(HttpClient httpClient, ILogger<FulfillmentClient> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
@@ -25,7 +25,7 @@ public sealed class FulfillmentInternalClient : IFulfillmentInternalClient
     {
         try
         {
-            var response = await _httpClient.PostAsJsonAsync("api/v1/internal/inventories/initialize", request, cancellationToken);
+            var response = await _httpClient.PostAsJsonAsync("api/v1/inventories/initialize", request, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 var result = await response.Content.ReadFromJsonAsync<InventoryClientResponse>(cancellationToken: cancellationToken);

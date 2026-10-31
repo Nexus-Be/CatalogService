@@ -1,12 +1,10 @@
 # 03 — SECURITY HEADERS, INTERNAL API & IDENTITY (CATALOG SERVICE)
 
-## 1. Controller Segregation
-* `Catalog.Api/Controllers/Public/`: Serves public product/category catalog requests.
-* `Catalog.Api/Controllers/Internal/`: Serves inter-service internal endpoints (`/api/v1/internal/...`).
-
-## 2. Internal Service Security
-* All internal endpoints protected by `InternalServiceAuthMiddleware` with `X-Internal-Service-Key`.
-* Outbound client `FulfillmentInternalClient` registered with `InternalServiceAuthHandler` to call Fulfillment internal inventory init endpoint `POST /api/v1/internal/inventories/initialize`.
+## 1. Public Controllers And Temporary Internal Disable
+* All controllers live under `Catalog.Api/Controllers/Public/`. There is no `Controllers/Internal/` folder.
+* Internal API security is temporarily disabled. `InternalServiceAuthMiddleware` registration is commented; no route requires `X-Internal-Service-Key`.
+* Inter-service calls use plain REST routes: `POST /api/v1/notifications/email/otp`, `POST /api/v1/wallets/checkout/direct`, `POST /api/v1/inventories/initialize`, `POST /api/v1/logs/batch`.
+* Re-enabling the old model requires explicit approval and restoring middleware, handler, Gateway blocking, and docs together.
 
 ## 3. Trusted Identity Extraction & Ownership Guard
 * When creating or editing products, extract `SellerId` from `this.GetUserId()`.

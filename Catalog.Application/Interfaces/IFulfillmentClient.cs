@@ -16,7 +16,7 @@ public record InventoryClientResponse(
     int TotalQuantity,
     int AvailableQuantity);
 
-public interface IFulfillmentInternalClient
+public interface IFulfillmentClient
 {
     Task<InventoryClientResponse?> InitializeInventoryAsync(
         InitializeInventoryClientRequest request,
