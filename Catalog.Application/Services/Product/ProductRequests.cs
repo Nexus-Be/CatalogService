@@ -11,7 +11,17 @@ public sealed record CreateProductRequest(
     string? Description = null,
     string? Brand = null,
     SaleType SaleType = SaleType.Regular,
-    string? Specifications = null);
+    string? Specifications = null,
+    List<CreateVariantRequest>? Variants = null);
+
+public sealed record CreateAuctionProductRequest(
+    Guid CategoryId,
+    string Name,
+    string? Description = null,
+    string? Brand = null,
+    string? SkuCode = null,
+    string? Specifications = null,
+    Guid? SellerId = null);
 
 public sealed record UpdateProductRequest(
     string Name,
@@ -60,6 +70,11 @@ public sealed record ChangeVariantStatusRequest(
 
 public sealed record SetDefaultVariantRequest(
     Guid VariantId);
+
+public sealed record UpdateProductImageRequest(
+    bool? IsActive = null,
+    short? SortOrder = null,
+    string? AltText = null);
 
 public sealed record SellerProductSearchQuery(
     int Page = 1,

@@ -21,8 +21,21 @@ public class VariantsController : ControllerBase
         _productService = productService;
     }
 
-    /// <summary>Updates a product variant's information.</summary>
+    /// <summary>Gets variant details by ID (CAT-42).</summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(VariantDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetVariantById(
+        [FromRoute] Guid id,
+        CancellationToken ct)
+    {
+        var variant = await _productService.GetVariantByIdAsync(id, ct);
+        return Ok(variant);
+    }
+
+    /// <summary>Updates a product variant's information (CAT-08).</summary>
     [HttpPut("{id:guid}")]
+    [HttpPatch("{id:guid}")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(typeof(VariantDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -42,7 +55,7 @@ public class VariantsController : ControllerBase
         return Ok(variant);
     }
 
-    /// <summary>Changes a variant's status (ACTIVE or INACTIVE with reason).</summary>
+    /// <summary>Changes a variant's status (ACTIVE or INACTIVE with reason) (CAT-09).</summary>
     [HttpPatch("{id:guid}/status")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(typeof(VariantDetailDto), StatusCodes.Status200OK)]
@@ -63,7 +76,7 @@ public class VariantsController : ControllerBase
         return Ok(variant);
     }
 
-    /// <summary>Soft deletes a product variant if it has no orders and is not the last variant.</summary>
+    /// <summary>Soft deletes a product variant if it has no orders and is not the last variant (CAT-11).</summary>
     [HttpDelete("{id:guid}")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -83,4 +96,3 @@ public class VariantsController : ControllerBase
         return NoContent();
     }
 }
-

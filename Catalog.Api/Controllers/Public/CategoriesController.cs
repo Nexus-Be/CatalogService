@@ -48,7 +48,7 @@ public class CategoriesController : ControllerBase
         return Ok(category);
     }
 
-    /// <summary>Creates a new category. Requires admin or staff role.</summary>
+    /// <summary>Creates a new category. Requires admin or staff role (CAT-15).</summary>
     [HttpPost]
     [RequireRole("admin", "staff")]
     [ProducesResponseType(typeof(CategoryDto), StatusCodes.Status201Created)]
@@ -62,8 +62,9 @@ public class CategoriesController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, category);
     }
 
-    /// <summary>Updates an existing category. Requires admin or staff role.</summary>
+    /// <summary>Updates an existing category. Requires admin or staff role (CAT-16).</summary>
     [HttpPut("{id:guid}")]
+    [HttpPatch("{id:guid}")]
     [RequireRole("admin", "staff")]
     [ProducesResponseType(typeof(CategoryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -75,7 +76,7 @@ public class CategoriesController : ControllerBase
         return Ok(category);
     }
 
-    /// <summary>Soft deletes a category. Requires admin or staff role.</summary>
+    /// <summary>Soft deletes a category. Requires admin or staff role (CAT-17).</summary>
     [HttpDelete("{id:guid}")]
     [RequireRole("admin", "staff")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

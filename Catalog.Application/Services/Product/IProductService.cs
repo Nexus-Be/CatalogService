@@ -1,6 +1,7 @@
 namespace Catalog.Application.Services.Product;
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,11 +15,12 @@ public interface IProductService
     Task<PagedData<ProductListItemDto>> SearchAsync(ProductListQuery query, CancellationToken cancellationToken = default);
     Task<ProductDetailDto> GetDetailAsync(Guid id, CancellationToken cancellationToken = default);
     Task<ProductDto> CreateAsync(CreateProductRequest request, CancellationToken cancellationToken = default);
+    Task<ProductDto> CreateAuctionProductAsync(CreateAuctionProductRequest request, Guid currentUserId, CancellationToken cancellationToken = default);
     Task<ProductDto> UpdateAsync(Guid id, UpdateProductRequest request, Guid currentUserId, CancellationToken cancellationToken = default);
     Task<ProductDto> ChangeStatusAsync(Guid id, ChangeProductStatusRequest request, Guid currentUserId, CancellationToken cancellationToken = default);
     Task<bool> SoftDeleteAsync(Guid id, Guid currentUserId, CancellationToken cancellationToken = default);
 
-    // Image Management (CAT-12, CAT-13)
+    // Image Management (CAT-12, CAT-13, CAT-14, CAT-40)
     Task<ProductImageDto> AddProductImageAsync(
         Guid productId,
         Guid currentUserId,
@@ -35,7 +37,26 @@ public interface IProductService
         Guid currentUserId,
         CancellationToken cancellationToken = default);
 
-    // Variant Management (CAT-07 to CAT-11)
+    Task<bool> DeleteImageByIdAsync(
+        Guid imageId,
+        Guid currentUserId,
+        CancellationToken cancellationToken = default);
+
+    Task<ProductImageDto> UpdateImageAsync(
+        Guid imageId,
+        UpdateProductImageRequest request,
+        Guid currentUserId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ProductImageDto>> GetProductImagesAsync(
+        Guid productId,
+        CancellationToken cancellationToken = default);
+
+    // Variant Management (CAT-07 to CAT-11, CAT-42)
+    Task<VariantDetailDto> GetVariantByIdAsync(
+        Guid variantId,
+        CancellationToken cancellationToken = default);
+
     Task<VariantDetailDto> AddVariantAsync(
         Guid productId,
         Guid currentUserId,

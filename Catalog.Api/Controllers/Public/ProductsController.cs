@@ -1,6 +1,7 @@
 namespace Catalog.Api.Controllers.Public;
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -73,7 +74,7 @@ public class ProductsController : ControllerBase
         return Ok(product);
     }
 
-    /// <summary>Creates a new product in Draft status. Requires seller or admin role.</summary>
+    /// <summary>Creates a new regular product in Draft status (CAT-01). Can include initial variants.</summary>
     [HttpPost]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status201Created)]
@@ -98,8 +99,27 @@ public class ProductsController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, product);
     }
 
-    /// <summary>Updates product details. Requires product owner or admin.</summary>
+    /// <summary>Creates a new auction product in Draft status (CAT-43). Does not require variant price.</summary>
+    [HttpPost("auction")]
+    [RequireRole("seller", "admin")]
+    [ProducesResponseType(typeof(ProductDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> CreateAuction([FromBody] CreateAuctionProductRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetUserId(out var currentUserId, out var errorResult))
+        {
+            return errorResult;
+        }
+
+        var product = await _productService.CreateAuctionProductAsync(request, currentUserId, ct);
+        return StatusCode(StatusCodes.Status201Created, product);
+    }
+
+    /// <summary>Updates product general details (CAT-02). Supports both PUT and PATCH.</summary>
     [HttpPut("{id:guid}")]
+    [HttpPatch("{id:guid}")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -116,7 +136,7 @@ public class ProductsController : ControllerBase
         return Ok(updated);
     }
 
-    /// <summary>Changes product status (DRAFT, ACTIVE, INACTIVE). Requires product owner or admin.</summary>
+    /// <summary>Changes product status (DRAFT, ACTIVE, INACTIVE) (CAT-03). Requires product owner or admin.</summary>
     [HttpPatch("{id:guid}/status")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
@@ -134,7 +154,7 @@ public class ProductsController : ControllerBase
         return Ok(updated);
     }
 
-    /// <summary>Soft deletes a product and all its variants. Requires product owner or admin.</summary>
+    /// <summary>Soft deletes a product and all its variants (CAT-04). Requires product owner or admin.</summary>
     [HttpDelete("{id:guid}")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -152,10 +172,20 @@ public class ProductsController : ControllerBase
     }
 
     // -------------------------------------------------------------
-    // Image Management (CAT-12, CAT-13)
+    // Image Management (CAT-12, CAT-13, CAT-40)
     // -------------------------------------------------------------
 
-    /// <summary>Uploads an image for a product via Cloudinary. Max 5MB, format .jpg/.jpeg/.png/.webp.</summary>
+    /// <summary>Gets all images of a product (CAT-40).</summary>
+    [HttpGet("{id:guid}/images")]
+    [ProducesResponseType(typeof(IReadOnlyList<ProductImageDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetImages([FromRoute] Guid id, CancellationToken ct)
+    {
+        var images = await _productService.GetProductImagesAsync(id, ct);
+        return Ok(images);
+    }
+
+    /// <summary>Uploads an image for a product via Cloudinary (CAT-12). Max 5MB, format .jpg/.jpeg/.png/.webp.</summary>
     [HttpPost("{id:guid}/images")]
     [RequireRole("seller", "admin")]
     [Consumes("multipart/form-data")]
@@ -183,13 +213,13 @@ public class ProductsController : ControllerBase
 
         if (file.Length > MaxImageFileSizeBytes)
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_FILE", "Image file size exceeds the 5MB limit.");
+            throw new BusinessRuleValidationException("VAL_LIMIT_EXCEEDED", "Image file size exceeds the 5MB limit.");
         }
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!AllowedImageExtensions.Contains(ext))
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_FILE", "Invalid image format. Supported formats: .jpg, .jpeg, .png, .webp.");
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Invalid image format. Supported formats: .jpg, .jpeg, .png, .webp.");
         }
 
         using var stream = file.OpenReadStream();
@@ -206,7 +236,7 @@ public class ProductsController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, uploadedImage);
     }
 
-    /// <summary>Deletes an image from a product.</summary>
+    /// <summary>Deletes an image from a product (CAT-13 sub-route).</summary>
     [HttpDelete("{id:guid}/images/{imageId:guid}")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -230,7 +260,7 @@ public class ProductsController : ControllerBase
     // Variant Management (CAT-07, CAT-10)
     // -------------------------------------------------------------
 
-    /// <summary>Adds a new variant/SKU to a product. Max 10 variants allowed.</summary>
+    /// <summary>Adds a new variant/SKU to a product (CAT-07). Max 10 variants allowed.</summary>
     [HttpPost("{id:guid}/variants")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(typeof(VariantDetailDto), StatusCodes.Status201Created)]
@@ -250,7 +280,7 @@ public class ProductsController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, variant);
     }
 
-    /// <summary>Sets a variant as the default variant for the product.</summary>
+    /// <summary>Sets a variant as the default variant for the product (CAT-10).</summary>
     [HttpPut("{id:guid}/default-variant")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
