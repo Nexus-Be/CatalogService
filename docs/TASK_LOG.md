@@ -325,3 +325,37 @@
   - `220b658`: `docs(catalog): add explicit data types to request and response schemas across all 30 endpoints`
 - Hướng dẫn push lên GitHub và cơ chế tự động đồng bộ commit vào Pull Request đang mở sang nhánh `dev`.
 
+### 30. Hoàn thiện Toàn bộ 26 File Tài liệu Kỹ thuật Từng API Theo Chuẩn Team Skill (`service-api-doc`)
+- **Tích hợp Skill của Nhóm:** Tiếp nhận và áp dụng chuẩn tài liệu kỹ thuật từ `.agents/skills/service-api-doc/SKILL.md` và mẫu `docs/api/SERVICE_API_DOC_TEMPLATE.md` được pull về từ nhánh `dev`.
+- **Cấu trúc Thư mục Module Hóa:** Tạo cấu trúc thư mục phân tách theo Feature trong `docs/api/`:
+  - `docs/api/Categories/`: 5 endpoints (`DELETE_categories_id.md`, `GET_categories.md`, `GET_categories_id.md`, `POST_categories.md`, `PUT_categories_id.md`).
+  - `docs/api/Products/`: 7 endpoints (`GET_products.md`, `GET_products_id.md`, `POST_products.md`, `POST_products_auction.md`, `PUT_products_id.md`, `PATCH_products_id_status.md`, `DELETE_products_id.md`).
+  - `docs/api/Variants/`: 6 endpoints (`GET_variants_id.md`, `POST_products_id_variants.md`, `PUT_variants_id.md`, `PUT_products_id_default_variant.md`, `PATCH_variants_id_status.md`, `DELETE_variants_id.md`).
+  - `docs/api/Images/`: 4 endpoints (`GET_products_id_images.md`, `POST_products_id_images.md`, `PATCH_images_id.md`, `DELETE_images_id.md`).
+  - `docs/api/SellerProducts/`: 2 endpoints (`GET_seller_products.md`, `GET_seller_products_id.md`).
+  - `docs/api/Internal/`: 2 endpoints (`POST_internal_variants.md`, `POST_internal_variants_check_status.md`).
+- **Tuân thủ Tuyệt đối 5 Phần Bắt buộc của Template:**
+  1. *Routing & Authorization:* Định tuyến số nhiều, RBAC policy (`AllowAnonymous`, `RequireRole("seller", "admin")`), quy tắc sở hữu người bán (`sellerId == currentUserId`).
+  2. *Input & Validation Schema:* Bảng tham số Route/Query rõ kiểu C# và ràng buộc, C# Record DTO và JSON mẫu (camelCase).
+  3. *Pure DTO Response Contract:* Trả về DTO thuần (không bọc `ApiResponse<T>`), đúng chuẩn CatalogService Inward boundary.
+  4. *RFC 9110 Error Matrix:* Bảng mã lỗi `SCREAMING_SNAKE_CASE`, message tiếng Anh Sentence case, điều kiện kích hoạt, và bảng ánh xạ Enum C# sang DB integer / API string.
+  5. *Execution Flow & Checklist:* Luồng xử lý chi tiết từng bước, checklist nghiệm thu hoàn thành.
+- **Đồng bộ:** Đồng bộ toàn bộ 26 file tài liệu sang cả hai thư mục `CatalogService_Refactor` và `CatalogService`.
+
+### 31. Nâng cấp Phân trang Category, Sắp xếp Tăng/Giảm Sản phẩm và Kiểm tra Tính Toàn vẹn Dữ liệu Thật
+- **Phân trang Danh mục (`pageSize = 10`):**
+  - Cập nhật `GET /api/v1/categories` hỗ trợ phân trang với `pageSize` chuẩn là 10 (`page = 1`, `pageSize = 10`), chuyển kiểu trả về sang `PagedData<CategoryItemDto>` chuẩn CatalogService.
+  - Hỗ trợ phân trang cả danh sách phẳng lẫn danh sách cây phân cấp `tree = true` (phân trang các node gốc và nhúng cây con lồng nhau).
+- **Tùy chọn Sắp xếp Tăng/Giảm (`sortBy` & `sortDirection`):**
+  - **Category:** Thêm `sortBy` (`sortOrder`, `name`, `level`, `createdAt`) và `sortDirection` (`asc`, `desc`).
+  - **Public Products (`GET /api/v1/products`):** Thêm `sortDirection` (`asc`, `desc`) hoạt động linh hoạt với `sortBy` (`name`, `price`, `rating`, `createdAt`/`newest`), bảo toàn tương thích ngược với các định dạng cũ (`priceAsc`, `priceDesc`).
+  - **Seller Products (`GET /api/v1/seller/products`):** Thêm `sortDirection` (`asc`, `desc`) kết hợp với `sortBy` (`name`, `price`, `createdAt`, `status`).
+- **Nạp Cây con Tự động cho Danh mục (`GET /api/v1/categories/{id}`):**
+  - Mở rộng `CategoryDto` với trường `IReadOnlyList<CategoryDto>? Children = null`.
+  - `GetByIdAsync` tự động kiểm tra cơ sở dữ liệu, nếu danh mục có các danh mục con trực thuộc thì tự động nạp và trả về đầy đủ trong `children`.
+- **Rà soát Tính Toàn vẹn Dữ liệu Thật (`GET /api/v1/products/{id}`):**
+  - Rà soát phương thức `GetDetailAsync` trong `ProductService.cs`: xác nhận toàn bộ các trường thông tin sản phẩm, danh mục, biến thể, thuộc tính và hình ảnh đều được truy vấn 100% từ cơ sở dữ liệu PostgreSQL qua EF Core.
+  - Loại bỏ hoàn toàn fallback URL mock, trả về trực tiếp URL ảnh nguyên gốc từ cơ sở dữ liệu.
+
+
+

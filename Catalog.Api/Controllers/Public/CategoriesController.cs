@@ -23,22 +23,26 @@ public class CategoriesController : ControllerBase
         _categoryService = categoryService;
     }
 
-    /// <summary>Lists categories. Supports tree hierarchy or flat list with search.</summary>
+    /// <summary>Lists categories with pagination and sorting. Supports tree hierarchy or flat list with search.</summary>
     [HttpGet]
-    [ProducesResponseType(typeof(IReadOnlyList<CategoryItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PagedData<CategoryItemDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? sortBy = "sortOrder",
+        [FromQuery] string? sortDirection = "asc",
         [FromQuery] Guid? parentId = null,
         [FromQuery] bool tree = false,
         [FromQuery] string? keyword = null,
         CancellationToken ct = default)
     {
         var categories = await _categoryService.GetCategoriesAsync(
-            new CategoryListQuery(parentId, tree, keyword),
+            new CategoryListQuery(page, pageSize, sortBy, sortDirection, parentId, tree, keyword),
             ct);
         return Ok(categories);
     }
 
-    /// <summary>Gets category details by ID.</summary>
+    /// <summary>Gets category details by ID including subcategories if present.</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(CategoryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

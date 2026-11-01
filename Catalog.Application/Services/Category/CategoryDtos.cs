@@ -10,7 +10,8 @@ public sealed record CategoryDto(
     string? Description,
     short Level,
     int SortOrder,
-    bool IsDisabled);
+    bool IsDisabled,
+    IReadOnlyList<CategoryDto>? Children = null);
 
 public sealed record CategoryItemDto(
     Guid CategoryId,

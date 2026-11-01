@@ -37,6 +37,7 @@ public class SellerProductsController : ControllerBase
         [FromQuery] Guid? categoryId = null,
         [FromQuery] SaleType? saleType = null,
         [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDirection = "asc",
         CancellationToken ct = default)
     {
         if (!this.TryGetUserId(out var currentUserId, out var errorResult))
@@ -51,7 +52,8 @@ public class SellerProductsController : ControllerBase
             status,
             categoryId,
             saleType,
-            sortBy);
+            sortBy,
+            sortDirection);
 
         var result = await _productService.SearchSellerProductsAsync(currentUserId, query, ct);
         return Ok(result);

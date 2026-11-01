@@ -44,6 +44,7 @@ public sealed record ProductListQuery(
     Guid? SellerId = null,
     SaleType? SaleType = null,
     string? SortBy = null,
+    string? SortDirection = "asc",
     decimal? MinPrice = null,
     decimal? MaxPrice = null,
     string? Brand = null,
@@ -83,7 +84,8 @@ public sealed record SellerProductSearchQuery(
     ProductStatus? Status = null,
     Guid? CategoryId = null,
     SaleType? SaleType = null,
-    string? SortBy = null);
+    string? SortBy = null,
+    string? SortDirection = "asc");
 
 public sealed record BatchGetVariantsRequest(List<Guid> VariantIds);
 

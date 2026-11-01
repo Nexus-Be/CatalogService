@@ -17,6 +17,10 @@ public sealed record UpdateCategoryRequest(
     bool IsDisabled = false);
 
 public sealed record CategoryListQuery(
+    int Page = 1,
+    int PageSize = 10,
+    string? SortBy = "sortOrder",
+    string? SortDirection = "asc",
     Guid? ParentId = null,
     bool Tree = false,
     string? Keyword = null);

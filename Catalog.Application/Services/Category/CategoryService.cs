@@ -30,6 +30,22 @@ public sealed class CategoryService : ICategoryService
             .FirstOrDefaultAsync(c => c.Id == id && !c.IsDeleted, cancellationToken)
             ?? throw new EntityNotFoundException("CATEGORY_NOT_FOUND", "Category", id);
 
+        var children = await _dbContext.Categories
+            .AsNoTracking()
+            .Where(c => c.ParentId == id && !c.IsDeleted)
+            .OrderBy(c => c.SortOrder)
+            .ThenBy(c => c.Name)
+            .Select(c => new CategoryDto(
+                c.Id,
+                c.ParentId,
+                c.Name,
+                c.Description,
+                c.Level,
+                c.SortOrder,
+                c.IsDisabled,
+                null))
+            .ToListAsync(cancellationToken);
+
         return new CategoryDto(
             category.Id,
             category.ParentId,
@@ -37,7 +53,8 @@ public sealed class CategoryService : ICategoryService
             category.Description,
             category.Level,
             category.SortOrder,
-            category.IsDisabled);
+            category.IsDisabled,
+            children.Count > 0 ? children : null);
     }
 
     public async Task<PagedData<CategoryDto>> ListAllAsync(int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
@@ -62,14 +79,18 @@ public sealed class CategoryService : ICategoryService
                 category.Description,
                 category.Level,
                 category.SortOrder,
-                category.IsDisabled))
+                category.IsDisabled,
+                null))
             .ToListAsync(cancellationToken);
 
         return new PagedData<CategoryDto>(items, PaginationMetadata.Create(safePage, safePageSize, totalCount));
     }
 
-    public async Task<IReadOnlyList<CategoryItemDto>> GetCategoriesAsync(CategoryListQuery query, CancellationToken cancellationToken = default)
+    public async Task<PagedData<CategoryItemDto>> GetCategoriesAsync(CategoryListQuery query, CancellationToken cancellationToken = default)
     {
+        var (safePage, safePageSize) = PaginationConstants.Normalize(query.Page, query.PageSize);
+        var isDesc = string.Equals(query.SortDirection, "desc", StringComparison.OrdinalIgnoreCase);
+
         var categoriesQuery = _dbContext.Categories
             .AsNoTracking()
             .Where(c => !c.IsDeleted && !c.IsDisabled);
@@ -80,9 +101,62 @@ public sealed class CategoryService : ICategoryService
             categoriesQuery = categoriesQuery.Where(c => c.Name.ToLower().Contains(kw));
         }
 
-        var allCategories = await categoriesQuery
-            .OrderBy(c => c.SortOrder)
-            .ThenBy(c => c.Name)
+        if (!query.Tree)
+        {
+            if (query.ParentId.HasValue)
+            {
+                categoriesQuery = categoriesQuery.Where(c => c.ParentId == query.ParentId.Value);
+            }
+
+            var totalCount = await categoriesQuery.CountAsync(cancellationToken);
+
+            IOrderedQueryable<Category> orderedQuery = (query.SortBy?.ToLowerInvariant(), isDesc) switch
+            {
+                ("name", false) => categoriesQuery.OrderBy(c => c.Name).ThenBy(c => c.SortOrder),
+                ("name", true) => categoriesQuery.OrderByDescending(c => c.Name).ThenBy(c => c.SortOrder),
+                ("level", false) => categoriesQuery.OrderBy(c => c.Level).ThenBy(c => c.SortOrder),
+                ("level", true) => categoriesQuery.OrderByDescending(c => c.Level).ThenBy(c => c.SortOrder),
+                ("createdat", false) => categoriesQuery.OrderBy(c => c.CreatedAt).ThenBy(c => c.SortOrder),
+                ("createdat", true) => categoriesQuery.OrderByDescending(c => c.CreatedAt).ThenBy(c => c.SortOrder),
+                ("sortorder", true) => categoriesQuery.OrderByDescending(c => c.SortOrder).ThenBy(c => c.Name),
+                _ => categoriesQuery.OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+            };
+
+            var items = await orderedQuery
+                .Skip((safePage - 1) * safePageSize)
+                .Take(safePageSize)
+                .Select(c => new CategoryItemDto(
+                    c.Id,
+                    c.ParentId,
+                    c.Name,
+                    c.Description,
+                    c.Level,
+                    c.SortOrder,
+                    null))
+                .ToListAsync(cancellationToken);
+
+            return new PagedData<CategoryItemDto>(items, PaginationMetadata.Create(safePage, safePageSize, totalCount));
+        }
+
+        // Tree hierarchy: sort and paginate root categories (default pageSize = 10), then attach descendants
+        var rootQuery = categoriesQuery.Where(c => c.ParentId == query.ParentId);
+        var totalRootCount = await rootQuery.CountAsync(cancellationToken);
+
+        IOrderedQueryable<Category> orderedRoots = (query.SortBy?.ToLowerInvariant(), isDesc) switch
+        {
+            ("name", false) => rootQuery.OrderBy(c => c.Name).ThenBy(c => c.SortOrder),
+            ("name", true) => rootQuery.OrderByDescending(c => c.Name).ThenBy(c => c.SortOrder),
+            ("level", false) => rootQuery.OrderBy(c => c.Level).ThenBy(c => c.SortOrder),
+            ("level", true) => rootQuery.OrderByDescending(c => c.Level).ThenBy(c => c.SortOrder),
+            ("createdat", false) => rootQuery.OrderBy(c => c.CreatedAt).ThenBy(c => c.SortOrder),
+            ("createdat", true) => rootQuery.OrderByDescending(c => c.CreatedAt).ThenBy(c => c.SortOrder),
+            ("sortorder", true) => rootQuery.OrderByDescending(c => c.SortOrder).ThenBy(c => c.Name),
+            _ => rootQuery.OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+        };
+
+        var pagedRoots = await orderedRoots
+            .Skip((safePage - 1) * safePageSize)
+            .Take(safePageSize)
             .Select(c => new CategoryItemDto(
                 c.Id,
                 c.ParentId,
@@ -93,23 +167,45 @@ public sealed class CategoryService : ICategoryService
                 new List<CategoryItemDto>()))
             .ToListAsync(cancellationToken);
 
-        if (!query.Tree)
+        if (pagedRoots.Count > 0)
         {
-            if (query.ParentId.HasValue)
+            var allDescendants = await _dbContext.Categories
+                .AsNoTracking()
+                .Where(c => !c.IsDeleted && !c.IsDisabled && c.ParentId != null)
+                .OrderBy(c => c.SortOrder)
+                .ThenBy(c => c.Name)
+                .Select(c => new CategoryItemDto(
+                    c.Id,
+                    c.ParentId,
+                    c.Name,
+                    c.Description,
+                    c.Level,
+                    c.SortOrder,
+                    new List<CategoryItemDto>()))
+                .ToListAsync(cancellationToken);
+
+            var lookup = allDescendants.ToLookup(c => c.ParentId);
+
+            void AttachChildren(CategoryItemDto parent)
             {
-                return allCategories.Where(c => c.ParentId == query.ParentId.Value).ToList();
+                var directChildren = lookup[parent.CategoryId].ToList();
+                if (directChildren.Count > 0)
+                {
+                    parent.Children?.AddRange(directChildren);
+                    foreach (var child in directChildren)
+                    {
+                        AttachChildren(child);
+                    }
+                }
             }
-            return allCategories;
+
+            foreach (var root in pagedRoots)
+            {
+                AttachChildren(root);
+            }
         }
 
-        var lookup = allCategories.ToLookup(c => c.ParentId);
-        foreach (var cat in allCategories)
-        {
-            cat.Children?.AddRange(lookup[cat.CategoryId]);
-        }
-
-        var rootCategories = lookup[query.ParentId].ToList();
-        return rootCategories;
+        return new PagedData<CategoryItemDto>(pagedRoots, PaginationMetadata.Create(safePage, safePageSize, totalRootCount));
     }
 
     public async Task<CategoryDto> CreateAsync(CreateCategoryRequest request, Guid? currentUserId = null, CancellationToken cancellationToken = default)

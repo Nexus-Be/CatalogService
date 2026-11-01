@@ -72,32 +72,48 @@
 
 #### 3. Request Contract
 * **Query Parameters:**
+  * `page` (`Integer`, Mặc định `1`): Chỉ mục trang.
+  * `pageSize` (`Integer`, Mặc định `10`): Kích thước trang chuẩn là 10.
+  * `sortBy` (`String?`, Mặc định `sortOrder`): Tiêu chí sắp xếp (`sortOrder`, `name`, `level`, `createdAt`).
+  * `sortDirection` (`String?`, Mặc định `asc`): Chiều sắp xếp (`asc`, `desc`).
   * `parentId` (`Guid?`, Tùy chọn): Lọc danh mục con trực tiếp thuộc về danh mục cha này.
   * `tree` (`Boolean`, Mặc định `false`): `true` trả về cây phân cấp lồng nhau, `false` trả về danh sách phẳng.
   * `keyword` (`String?`, Tùy chọn): Từ khóa tìm kiếm theo tên.
 
 #### 4. Response Contract
 * **HTTP Status Code:** `200 OK`
-* **Response Body (`IReadOnlyList<CategoryItemDto>`):**
-  * `categoryId` (`Guid`): ID danh mục.
-  * `parentId` (`Guid?`): ID danh mục cha.
-  * `name` (`String`): Tên danh mục.
-  * `description` (`String?`): Mô tả.
-  * `level` (`Short`): Cấp độ cây (1, 2, 3).
-  * `sortOrder` (`Integer`): Thứ tự hiển thị.
-  * `children` (`Array of CategoryItemDto?`): Danh mục con trực thuộc (khi `tree = true`).
+* **Response Body (`PagedData<CategoryItemDto>`):**
+  * `items` (`Array of CategoryItemDto`):
+    * `categoryId` (`Guid`): ID danh mục.
+    * `parentId` (`Guid?`): ID danh mục cha.
+    * `name` (`String`): Tên danh mục.
+    * `description` (`String?`): Mô tả.
+    * `level` (`Short`): Cấp độ cây (1, 2, 3).
+    * `sortOrder` (`Integer`): Thứ tự hiển thị.
+    * `children` (`Array of CategoryItemDto?`): Danh mục con trực thuộc (khi `tree = true`).
+  * `pagination` (`PaginationMetadata`): `pageIndex`, `pageSize`, `totalCount`, `totalPages`, `hasPreviousPage`, `hasNextPage`.
 ```json
-[
-  {
-    "categoryId": "10000000-0000-0000-0000-000000000001",
-    "parentId": null,
-    "name": "Thời Trang",
-    "description": "Quần áo thời trang nam nữ",
-    "level": 1,
-    "sortOrder": 1,
-    "children": []
+{
+  "items": [
+    {
+      "categoryId": "10000000-0000-0000-0000-000000000001",
+      "parentId": null,
+      "name": "Thời Trang",
+      "description": "Quần áo thời trang nam nữ",
+      "level": 1,
+      "sortOrder": 1,
+      "children": []
+    }
+  ],
+  "pagination": {
+    "pageIndex": 1,
+    "pageSize": 10,
+    "totalCount": 5,
+    "totalPages": 1,
+    "hasPreviousPage": false,
+    "hasNextPage": false
   }
-]
+}
 ```
 
 #### 5. Processing Flow
@@ -138,6 +154,7 @@
   * `level` (`Short`): Cấp độ (1, 2, 3).
   * `sortOrder` (`Integer`): Thứ tự hiển thị.
   * `isDisabled` (`Boolean`): Cờ vô hiệu hóa.
+  * `children` (`Array of CategoryDto?`): Danh sách danh mục con trực thuộc nếu có cây con.
 * **Error Response (`404 Not Found`):**
 ```json
 {
@@ -280,7 +297,8 @@
 #### 2. Validation Rules & Parameters
 * `page` (`Integer`, $\ge 1$, Mặc định `1`), `pageSize` (`Integer`, $1 \le pageSize \le 100$, Mặc định `20`).
 * `minPrice`, `maxPrice` (`Decimal?`, $\ge 0$).
-* `sortBy` (`String?`): `price_asc`, `price_desc`, `rating_desc`, `newest`.
+* `sortBy` (`String?`): `name`, `price`, `rating`, `createdAt` / `newest` (Hỗ trợ cả format cũ `price_asc`, `price_desc`).
+* `sortDirection` (`String?`): `asc`, `desc` (Mặc định `asc`). Chiều sắp xếp tăng hoặc giảm.
 
 #### 3. Response Contract
 * **HTTP Status Code:** `200 OK`
@@ -326,7 +344,7 @@
 
 #### 2. Request & Response
 * **Headers:** `x-user-id` (`Guid`, Bắt buộc).
-* **Query Parameters:** `keyword` (`String?`), `status` (`String?`), `page` (`Integer`), `pageSize` (`Integer`).
+* **Query Parameters:** `keyword` (`String?`), `status` (`String?`), `categoryId` (`Guid?`), `saleType` (`SaleType?`), `sortBy` (`String?`: `name`, `price`, `createdAt`, `status`), `sortDirection` (`String?`: `asc`, `desc`, Mặc định `asc`), `page` (`Integer`), `pageSize` (`Integer`).
 * **HTTP Status Code:** `200 OK` trả về `PagedData<SellerProductListItemDto>` kèm `variantCount`, `hasOrder`.
 
 ---

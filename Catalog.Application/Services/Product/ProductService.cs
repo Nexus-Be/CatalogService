@@ -116,15 +116,35 @@ public sealed class ProductService : IProductService
 
         var totalCount = await products.CountAsync(cancellationToken);
 
-        IQueryable<Product> ordered = query.SortBy switch
+        var isDesc = string.Equals(query.SortDirection, "desc", StringComparison.OrdinalIgnoreCase);
+        var sortKey = query.SortBy?.Trim().ToLowerInvariant();
+
+        if (sortKey == "priceasc" || sortKey == "price_asc") { sortKey = "price"; isDesc = false; }
+        else if (sortKey == "pricedesc" || sortKey == "price_desc") { sortKey = "price"; isDesc = true; }
+        else if (sortKey == "rating_desc") { sortKey = "rating"; isDesc = true; }
+        else if (sortKey == "rating_asc") { sortKey = "rating"; isDesc = false; }
+        else if (sortKey == "name_asc") { sortKey = "name"; isDesc = false; }
+        else if (sortKey == "name_desc") { sortKey = "name"; isDesc = true; }
+        else if (sortKey == "createdat_asc" || sortKey == "newest_asc") { sortKey = "createdat"; isDesc = false; }
+        else if (sortKey == "createdat_desc" || sortKey == "newest" || sortKey == "newest_desc") { sortKey = "createdat"; isDesc = true; }
+
+        IQueryable<Product> ordered = (sortKey, isDesc) switch
         {
-            "priceAsc" => products
+            ("price", false) => products
                 .OrderBy(p => p.Variants.Where(v => !v.IsDeleted && v.Status == VariantStatus.Active).Min(v => v.Price))
                 .ThenBy(p => p.Id),
-            "priceDesc" => products
+            ("price", true) => products
                 .OrderByDescending(p => p.Variants.Where(v => !v.IsDeleted && v.Status == VariantStatus.Active).Min(v => v.Price))
                 .ThenBy(p => p.Id),
-            "rating" => products.OrderByDescending(p => p.RatingStats != null ? p.RatingStats.AvgRating : 0).ThenBy(p => p.Id),
+            ("name", false) => products.OrderBy(p => p.Name).ThenBy(p => p.Id),
+            ("name", true) => products.OrderByDescending(p => p.Name).ThenBy(p => p.Id),
+            ("rating", false) => products
+                .OrderBy(p => p.RatingStats != null ? p.RatingStats.AvgRating : 0)
+                .ThenBy(p => p.Id),
+            ("rating", true) => products
+                .OrderByDescending(p => p.RatingStats != null ? p.RatingStats.AvgRating : 0)
+                .ThenBy(p => p.Id),
+            ("createdat", false) => products.OrderBy(p => p.CreatedAt).ThenBy(p => p.Id),
             _ => products.OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Id),
         };
 
@@ -193,7 +213,7 @@ public sealed class ProductService : IProductService
                 )).ToList(),
                 p.Images.Where(i => !i.IsDeleted).OrderBy(i => i.SortOrder).Select(i => new ProductDetailImageDto(
                     i.Id,
-                    i.Url.Contains("nexus.local") ? DefaultImageUrl : i.Url,
+                    i.Url,
                     i.AltText,
                     i.IsActive,
                     i.SortOrder,
@@ -1270,14 +1290,27 @@ public sealed class ProductService : IProductService
 
         var totalCount = await products.CountAsync(cancellationToken);
 
-        IQueryable<Product> ordered = query.SortBy switch
+        var isDesc = string.Equals(query.SortDirection, "desc", StringComparison.OrdinalIgnoreCase);
+        var sortKey = query.SortBy?.Trim().ToLowerInvariant();
+
+        if (sortKey == "createdat_asc") { sortKey = "createdat"; isDesc = false; }
+        else if (sortKey == "createdat_desc") { sortKey = "createdat"; isDesc = true; }
+        else if (sortKey == "name_asc") { sortKey = "name"; isDesc = false; }
+        else if (sortKey == "name_desc") { sortKey = "name"; isDesc = true; }
+        else if (sortKey == "price_asc") { sortKey = "price"; isDesc = false; }
+        else if (sortKey == "price_desc") { sortKey = "price"; isDesc = true; }
+
+        IQueryable<Product> ordered = (sortKey, isDesc) switch
         {
-            "createdAt_asc" => products.OrderBy(p => p.CreatedAt).ThenBy(p => p.Id),
-            "createdAt_desc" => products.OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Id),
-            "name_asc" => products.OrderBy(p => p.Name).ThenBy(p => p.Id),
-            "name_desc" => products.OrderByDescending(p => p.Name).ThenBy(p => p.Id),
-            "price_asc" => products.OrderBy(p => p.Variants.Where(v => !v.IsDeleted).Min(v => v.Price)).ThenBy(p => p.Id),
-            "price_desc" => products.OrderByDescending(p => p.Variants.Where(v => !v.IsDeleted).Min(v => v.Price)).ThenBy(p => p.Id),
+            ("name", false) => products.OrderBy(p => p.Name).ThenBy(p => p.Id),
+            ("name", true) => products.OrderByDescending(p => p.Name).ThenBy(p => p.Id),
+            ("price", false) => products
+                .OrderBy(p => p.Variants.Where(v => !v.IsDeleted).Min(v => v.Price))
+                .ThenBy(p => p.Id),
+            ("price", true) => products
+                .OrderByDescending(p => p.Variants.Where(v => !v.IsDeleted).Min(v => v.Price))
+                .ThenBy(p => p.Id),
+            ("createdat", false) => products.OrderBy(p => p.CreatedAt).ThenBy(p => p.Id),
             _ => products.OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Id),
         };
 
