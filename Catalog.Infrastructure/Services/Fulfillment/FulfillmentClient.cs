@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -12,6 +13,11 @@ using Catalog.Application.Interfaces;
 
 public sealed class FulfillmentClient : IFulfillmentClient
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly HttpClient _httpClient;
     private readonly ILogger<FulfillmentClient> _logger;
 
@@ -35,8 +41,20 @@ public sealed class FulfillmentClient : IFulfillmentClient
             var response = await _httpClient.GetAsync($"api/v1/warehouses/seller/{sellerId}", cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                var result = await response.Content.ReadFromJsonAsync<List<WarehouseClientDto>>(cancellationToken: cancellationToken);
-                return result ?? (IReadOnlyList<WarehouseClientDto>)Array.Empty<WarehouseClientDto>();
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (string.IsNullOrWhiteSpace(content))
+                {
+                    return Array.Empty<WarehouseClientDto>();
+                }
+
+                if (content.TrimStart().StartsWith("["))
+                {
+                    var list = JsonSerializer.Deserialize<List<WarehouseClientDto>>(content, JsonOptions);
+                    return list ?? (IReadOnlyList<WarehouseClientDto>)Array.Empty<WarehouseClientDto>();
+                }
+
+                var single = JsonSerializer.Deserialize<WarehouseClientDto>(content, JsonOptions);
+                return single != null ? new[] { single } : Array.Empty<WarehouseClientDto>();
             }
 
             _logger.LogWarning("[REST Internal Fulfillment] GetWarehousesBySeller failed. Status: {StatusCode}", response.StatusCode);
@@ -57,8 +75,26 @@ public sealed class FulfillmentClient : IFulfillmentClient
             var response = await _httpClient.GetAsync("api/v1/warehouses", cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                var result = await response.Content.ReadFromJsonAsync<List<WarehouseClientDto>>(cancellationToken: cancellationToken);
-                return result ?? (IReadOnlyList<WarehouseClientDto>)Array.Empty<WarehouseClientDto>();
+                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (string.IsNullOrWhiteSpace(content))
+                {
+                    return Array.Empty<WarehouseClientDto>();
+                }
+
+                if (content.TrimStart().StartsWith("["))
+                {
+                    var list = JsonSerializer.Deserialize<List<WarehouseClientDto>>(content, JsonOptions);
+                    return list ?? (IReadOnlyList<WarehouseClientDto>)Array.Empty<WarehouseClientDto>();
+                }
+
+                using var doc = JsonDocument.Parse(content);
+                if (doc.RootElement.TryGetProperty("items", out var itemsElement) && itemsElement.ValueKind == JsonValueKind.Array)
+                {
+                    var list = JsonSerializer.Deserialize<List<WarehouseClientDto>>(itemsElement.GetRawText(), JsonOptions);
+                    return list ?? (IReadOnlyList<WarehouseClientDto>)Array.Empty<WarehouseClientDto>();
+                }
+
+                return Array.Empty<WarehouseClientDto>();
             }
 
             _logger.LogWarning("[REST Internal Fulfillment] GetActiveWarehouses failed. Status: {StatusCode}", response.StatusCode);

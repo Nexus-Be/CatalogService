@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
 [Route("api/v1/seller/products")]
+[Route("api/v1/products/sellers")]
 [Produces("application/json")]
 public class SellerProductsController : ControllerBase
 {

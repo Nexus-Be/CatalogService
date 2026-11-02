@@ -24,6 +24,7 @@ description: Add or modify outbound typed REST clients in CatalogService (port 8
 3. **No Internal API Keys:** Inter-service routes use standard public endpoints. Do not send `X-Internal-Service-Key`.
 4. **Idempotency on Creation:** Mutating inventory initialization calls should transmit an `Idempotency-Key` header with a deterministic or UUIDv4 string.
 5. **Timeout:** Enforce `client.Timeout = TimeSpan.FromSeconds(10)`.
+6. **W3C Distributed Tracing:** Propagate `traceparent` headers when initializing inventory with FulfillmentService to maintain end-to-end product provisioning traces.
 
 ## Implementation Steps
 
