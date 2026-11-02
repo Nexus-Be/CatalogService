@@ -403,3 +403,18 @@
   - Xác nhận kiến trúc: Khi một Variant chuyển sang `Inactive`, bản ghi tồn kho vật lý tương ứng trong cơ sở dữ liệu FulfillmentService hoàn toàn không bị xóa, số lượng hàng vẫn được lưu giữ an toàn.
   - Do đó, khi kích hoạt lại Variant (`Inactive -> Active`), tuyệt đối không được gọi lại lệnh tạo kho `InitializeInventoryAsync` để tránh lỗi trùng khóa hoặc reset số lượng tồn.
   - Điểm 4 giữ nguyên hiện trạng thiết kế, không cần chỉnh sửa code.
+
+
+### 36. Chuẩn hóa Hợp đồng Liên Service sang Fulfillment Service (FUL-01, WH-01, WH-03)
+- **Bối cảnh:**
+  - Đối chiếu trực tiếp với bộ tài liệu API chính thức của `FulfillmentService` (`Downloads/apis`).
+  - Phát hiện: API khai báo tồn kho ban đầu thật sự là `POST /api/v1/internal/inventories/declare` (`FUL-01`), yêu cầu bắt buộc phải có `warehouseId` và `quantity`.
+  - Phía Fulfillment có quản lý kho theo người bán qua `GET /api/v1/warehouses/seller/{sellerId}` (`WH-03`) và kho sàn qua `GET /api/v1/warehouses` (`WH-01`).
+- **Triển khai kỹ thuật:**
+  - `IFulfillmentClient.cs`: Mở rộng thêm `WarehouseClientDto`, `DeclareInventoryClientRequest`, `GetWarehousesBySellerIdAsync`, `GetActiveWarehousesAsync`, `DeclareInventoryAsync`, và hàm điều phối tự động `InitializeInventoryForSkuAsync(Guid skuId, Guid sellerId)`.
+  - `FulfillmentClient.cs`: Cài đặt logic 2 bước:
+    1. Tra cứu kho đang hoạt động của Seller (`WH-03`). Nếu Seller chưa có kho riêng thì fallback lấy kho trung tâm đang active của sàn (`WH-01`).
+    2. Gọi `POST /api/v1/internal/inventories/declare` với `(skuId, warehouseId, quantity = 0, note)`.
+  - `DependencyInjection.cs`: Bổ sung nạp key `Fulfillment:BaseUrl` từ `appsettings.json`.
+  - `ProductService.cs`: Chuyển đổi các vị trí kích hoạt sản phẩm/biến thể sang gọi `_fulfillmentClient.InitializeInventoryForSkuAsync(variant.Id, product.SellerId, cancellationToken)`.
+- **Kiểm chứng:** `dotnet build Catalog.sln -c Release` thành công 100% với 0 Warning(s), 0 Error(s).

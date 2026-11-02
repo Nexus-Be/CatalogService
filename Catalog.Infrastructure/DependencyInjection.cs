@@ -37,6 +37,7 @@ public static class DependencyInjection
         // Internal Fulfillment Client
         var fulfillmentBaseUrl = Environment.GetEnvironmentVariable("FULFILLMENT_SERVICE_URL")
             ?? configuration["FULFILLMENT_SERVICE_URL"]
+            ?? configuration["Fulfillment:BaseUrl"]
             ?? configuration["Services:Fulfillment:BaseUrl"]
             ?? configuration["FulfillmentService:BaseUrl"]
             ?? "http://localhost:8006/";

@@ -434,8 +434,9 @@
   * `id` (`Guid`), `sellerId` (`Guid`), `categoryId` (`Guid`), `name` (`String`), `description` (`String?`), `brand` (`String?`), `status` (`String`: `"Draft"`).
 
 #### 5. Cross-service Integration Detail
-* **Service gọi đến:** `FulfillmentService` (`http://localhost:8006/api/v1/inventories/initialize`).
-* **Payload:** `{ "productId": "...", "skuId": null, "initialQuantity": 0 }`.
+* **Service gọi đến:** `FulfillmentService` (`POST /api/v1/internal/inventories/declare` - `FUL-01`).
+* **Quy trình 2 bước:** (1) Tra cứu kho của seller qua `GET /api/v1/warehouses/seller/{sellerId}` (`WH-03`), fallback `GET /api/v1/warehouses` (`WH-01`); (2) Khai báo tồn kho ban đầu qua `POST /api/v1/internal/inventories/declare` với `(skuId, warehouseId, quantity: 0)`.
+* **Vòng đời tạo kho:** Tạo sản phẩm `DRAFT` không gọi Fulfillment. Tồn kho chỉ được khai báo khi chuyển sang `ACTIVE` hoặc khi thêm biến thể vào sản phẩm đang `ACTIVE`.
 * **Cơ chế chịu lỗi:** Bọc trong `try-catch` non-fatal. Nếu Fulfillment Service mất kết nối hoặc trả về lỗi, hệ thống chỉ ghi warning log và vẫn hoàn thành việc tạo Product trong Catalog DB.
 
 ---

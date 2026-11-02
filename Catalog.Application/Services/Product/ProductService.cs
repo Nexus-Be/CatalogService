@@ -1,4 +1,4 @@
-namespace Catalog.Application.Services.Product;
+﻿namespace Catalog.Application.Services.Product;
 
 using System;
 using System.Collections.Generic;
@@ -713,8 +713,9 @@ public sealed class ProductService : IProductService
             {
                 try
                 {
-                    await _fulfillmentClient.InitializeInventoryAsync(
-                        new InitializeInventoryClientRequest(variant.Id, null, 0),
+                    await _fulfillmentClient.InitializeInventoryForSkuAsync(
+                        variant.Id,
+                        product.SellerId,
                         cancellationToken);
                 }
                 catch
@@ -1103,8 +1104,9 @@ public sealed class ProductService : IProductService
         {
             try
             {
-                await _fulfillmentClient.InitializeInventoryAsync(
-                    new InitializeInventoryClientRequest(variant.Id, null, 0),
+                await _fulfillmentClient.InitializeInventoryForSkuAsync(
+                    variant.Id,
+                    product.SellerId,
                     cancellationToken);
             }
             catch
