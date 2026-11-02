@@ -35,7 +35,6 @@ public class VariantsController : ControllerBase
 
     /// <summary>Updates a product variant's information (CAT-08).</summary>
     [HttpPut("{id:guid}")]
-    [HttpPatch("{id:guid}")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(typeof(VariantDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -54,6 +53,19 @@ public class VariantsController : ControllerBase
         var variant = await _productService.UpdateVariantAsync(id, currentUserId, request, ct);
         return Ok(variant);
     }
+
+    /// <summary>Updates a product variant's information via partial patch (CAT-08).</summary>
+    [HttpPatch("{id:guid}")]
+    [RequireRole("seller", "admin")]
+    [ProducesResponseType(typeof(VariantDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public Task<IActionResult> PatchVariant(
+        [FromRoute] Guid id,
+        [FromBody] UpdateVariantRequest request,
+        CancellationToken ct)
+        => UpdateVariant(id, request, ct);
 
     /// <summary>Changes a variant's status (ACTIVE or INACTIVE with reason) (CAT-09).</summary>
     [HttpPatch("{id:guid}/status")]

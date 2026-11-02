@@ -30,9 +30,8 @@ public class ProductsController : ControllerBase
         _productService = productService;
     }
 
-    /// <summary>Searches and lists active products with filtering and pagination (supports alias /search).</summary>
+    /// <summary>Searches and lists active products with filtering and pagination (CAT-06).</summary>
     [HttpGet]
-    [HttpGet("search")]
     [ProducesResponseType(typeof(PagedData<ProductListItemDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedData<ProductListItemDto>>> Search(
         [FromQuery] int page = 1,
@@ -66,6 +65,25 @@ public class ProductsController : ControllerBase
         var result = await _productService.SearchAsync(query, ct);
         return Ok(result);
     }
+
+    /// <summary>Searches active products with filtering and pagination (CAT-20 / CAT-21 alias endpoint).</summary>
+    [HttpGet("search")]
+    [ProducesResponseType(typeof(PagedData<ProductListItemDto>), StatusCodes.Status200OK)]
+    public Task<ActionResult<PagedData<ProductListItemDto>>> SearchAlias(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? keyword = null,
+        [FromQuery] Guid? categoryId = null,
+        [FromQuery] Guid? sellerId = null,
+        [FromQuery] SaleType? saleType = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDirection = "asc",
+        [FromQuery] decimal? minPrice = null,
+        [FromQuery] decimal? maxPrice = null,
+        [FromQuery] string? brand = null,
+        [FromQuery] decimal? minRating = null,
+        CancellationToken ct = default)
+        => Search(page, pageSize, keyword, categoryId, sellerId, saleType, sortBy, sortDirection, minPrice, maxPrice, brand, minRating, ct);
 
     /// <summary>Gets full product details by ID (variants, images, rating).</summary>
     [HttpGet("{id:guid}")]
@@ -124,9 +142,8 @@ public class ProductsController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, product);
     }
 
-    /// <summary>Updates product general details (CAT-02). Supports both PUT and PATCH.</summary>
+    /// <summary>Updates product general details (CAT-02).</summary>
     [HttpPut("{id:guid}")]
-    [HttpPatch("{id:guid}")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -142,6 +159,16 @@ public class ProductsController : ControllerBase
         var updated = await _productService.UpdateAsync(id, request, currentUserId, ct);
         return Ok(updated);
     }
+
+    /// <summary>Updates product general details via partial patch (CAT-02).</summary>
+    [HttpPatch("{id:guid}")]
+    [RequireRole("seller", "admin")]
+    [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public Task<IActionResult> Patch([FromRoute] Guid id, [FromBody] UpdateProductRequest request, CancellationToken ct)
+        => Update(id, request, ct);
 
     /// <summary>Changes product status (DRAFT, ACTIVE, INACTIVE) (CAT-03). Requires product owner or admin.</summary>
     [HttpPatch("{id:guid}/status")]
