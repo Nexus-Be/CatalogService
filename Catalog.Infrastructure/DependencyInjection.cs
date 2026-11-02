@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Catalog.Application.Interfaces;
 using Catalog.Infrastructure.Persistence;
+using Catalog.Infrastructure.Services.Cloudinary;
 using Catalog.Infrastructure.Services.Common;
 using Catalog.Infrastructure.Services.Fulfillment;
 
@@ -29,6 +30,9 @@ public static class DependencyInjection
             options.UseNpgsql(connectionString));
 
         services.AddScoped<ICatalogDbContext>(sp => sp.GetRequiredService<AppDbContext>());
+
+        // Image Storage
+        services.AddSingleton<IImageStorageService, CloudinaryStorageService>();
 
         // Internal Fulfillment Client
         var fulfillmentBaseUrl = Environment.GetEnvironmentVariable("FULFILLMENT_SERVICE_URL")
