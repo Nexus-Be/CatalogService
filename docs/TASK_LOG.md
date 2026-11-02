@@ -367,3 +367,39 @@
   - Hỗ trợ client gọi cả hai đường dẫn: `GET /api/v1/products` và `GET /api/v1/products/search`.
   - Cả hai đường dẫn đều xử lý thống nhất qua `IProductService.SearchAsync`, hỗ trợ tìm kiếm từ khóa (`keyword`), bộ lọc nâng cao (`categoryId`, `sellerId`, `saleType`, `minPrice`, `maxPrice`, `brand`, `minRating`), sắp xếp (`sortBy`, `sortDirection`) và phân trang (`page`, `pageSize`).
   - Đồng bộ cập nhật tài liệu kỹ thuật trong `docs/api/Products/GET_products.md` và `docs/API_DOCUMENTATION.md`.
+
+### 33. Chuẩn hóa Vòng đời Khởi tạo Tồn kho (Lifecycle Refactor) và Đồng nhất Sản phẩm Đấu giá
+- **Vấn đề phát hiện:**
+  - `CreateAsync` gửi nhầm `product.Id` sang `IFulfillmentClient.InitializeInventoryAsync` tạo ra bản ghi tồn kho mồ côi (orphan record) bên Fulfillment.
+  - Khởi tạo tồn kho khi sản phẩm mới tạo ở trạng thái `Draft` là sai vòng đời, lãng phí tài nguyên và tạo kho chết cho các sản phẩm nháp bị bỏ dở.
+  - Sự không đồng nhất giữa hàm tạo sản phẩm chung (`CreateAsync`) và hàm tạo sản phẩm đấu giá (`CreateAuctionProductAsync`).
+- **Giải pháp triển khai:**
+  - **Lúc tạo sản phẩm (`POST /api/v1/products` - trạng thái `Draft`):**
+    - Xóa bỏ hoàn toàn việc gọi sang Fulfillment lúc tạo nháp.
+    - Nhận diện `SaleType`: Nếu `SaleType == Regular`, bắt buộc giá `Price > 0` cho các biến thể; nếu `SaleType == Auction`, cho phép không cần nhập giá (`Price = null`), tự động sinh 1 SKU đấu giá mặc định nếu không truyền biến thể.
+  - **Lúc chuyển trạng thái sang `Active` (`PATCH /api/v1/products/{id}/status`):**
+    - Khi người bán hoặc admin chuyển trạng thái từ `Draft` -> `Active`: Nếu `SaleType == Regular`, quét qua tất cả biến thể Active thực tế của sản phẩm và gửi `variant.Id` sang Fulfillment khởi tạo kho đồng loạt.
+    - Sản phẩm `Auction` tuyệt đối không gọi tạo kho.
+  - **Lúc thêm biến thể (`POST /api/v1/products/{id}/variants`):**
+    - Chỉ gọi Fulfillment khởi tạo kho cho biến thể mới nếu sản phẩm cha đã ở trạng thái `Active` và là `Regular`.
+  - Cập nhật hợp đồng DTO: `CreateVariantRequest.Price` chuyển thành `decimal? Price = null` để linh hoạt giữa Regular và Auction.
+  - Đồng bộ cập nhật tài liệu kỹ thuật: `POST_products.md`, `PATCH_products_id_status.md`, `POST_products_id_variants.md`.
+
+
+### 34. Rà soát & Chuẩn hóa Luồng Nghiệp vụ Sản phẩm (Điểm 1 & Điểm 2)
+- **Điểm 1 - Chặn thay đổi trạng thái qua API Update thông thường (`PUT/PATCH /api/v1/products/{id}`):**
+  - Phát hiện: Endpoint `UpdateAsync` cho phép truyền trường `Status` làm bypass quy trình kiểm duyệt và vòng đời khởi tạo kho của sản phẩm.
+  - Xử lý: Nếu `request.Status` được gửi lên khác với trạng thái hiện tại của sản phẩm, hệ thống ném ngoại lệ `400 Bad Request` (`VAL_INVALID_INPUT`) yêu cầu client sử dụng endpoint chuyên trách `PATCH /api/v1/products/{id}/status`.
+- **Điểm 2 - Xác thực tính sở hữu của Ảnh sản phẩm (`DELETE /api/v1/products/{id}/images/{imageId}`):**
+  - Phát hiện: Trước đó chỉ kiểm tra `imageId` tồn tại mà chưa kiểm tra `image.ProductId == productId`.
+  - Xử lý: Bổ sung kiểm tra `if (image.ProductId != productId) throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "The specified image does not belong to this product.");` đảm bảo không thể xóa chéo ảnh giữa các sản phẩm.
+
+### 35. Nghiêm cấm Tạo hộ Sản phẩm (Điểm 3) & Xác nhận Vòng đời Kho Tồn (Điểm 4)
+- **Điểm 3 - Không cho phép Admin tạo hộ sản phẩm:**
+  - Quy tắc: Cả Seller lẫn Admin chỉ được phép tạo sản phẩm cho chính mình (`SellerId == currentUserId`).
+  - Tại `POST /api/v1/products` và `POST /api/v1/products/auction`: Nếu `request.SellerId` được gửi lên khác với `currentUserId`, từ chối ngay lập tức với mã lỗi `403 Forbidden` (`FORBIDDEN`, `"You cannot create products on behalf of another seller."`).
+  - Gán chặt chẽ `reqWithSeller = request with { SellerId = currentUserId };` và bổ sung kiểm tra tầng Application trong `ProductService.cs` (`if (request.SellerId == Guid.Empty) throw ...`).
+- **Điểm 4 - Xác nhận Vòng đời Kho Tồn khi Biến thể Inactive/Active:**
+  - Xác nhận kiến trúc: Khi một Variant chuyển sang `Inactive`, bản ghi tồn kho vật lý tương ứng trong cơ sở dữ liệu FulfillmentService hoàn toàn không bị xóa, số lượng hàng vẫn được lưu giữ an toàn.
+  - Do đó, khi kích hoạt lại Variant (`Inactive -> Active`), tuyệt đối không được gọi lại lệnh tạo kho `InitializeInventoryAsync` để tránh lỗi trùng khóa hoặc reset số lượng tồn.
+  - Điểm 4 giữ nguyên hiện trạng thiết kế, không cần chỉnh sửa code.

@@ -91,13 +91,12 @@ public class ProductsController : ControllerBase
             return errorResult;
         }
 
-        var effectiveSellerId = request.SellerId != Guid.Empty ? request.SellerId : currentUserId;
-        if (!this.IsAdmin() && effectiveSellerId != currentUserId)
+        if (request.SellerId != Guid.Empty && request.SellerId != currentUserId)
         {
             return this.ForbiddenError("You cannot create products on behalf of another seller.");
         }
 
-        var reqWithSeller = request with { SellerId = effectiveSellerId };
+        var reqWithSeller = request with { SellerId = currentUserId };
         var product = await _productService.CreateAsync(reqWithSeller, ct);
         return StatusCode(StatusCodes.Status201Created, product);
     }
@@ -114,6 +113,11 @@ public class ProductsController : ControllerBase
         if (!this.TryGetUserId(out var currentUserId, out var errorResult))
         {
             return errorResult;
+        }
+
+        if (request.SellerId.HasValue && request.SellerId.Value != Guid.Empty && request.SellerId.Value != currentUserId)
+        {
+            return this.ForbiddenError("You cannot create products on behalf of another seller.");
         }
 
         var product = await _productService.CreateAuctionProductAsync(request, currentUserId, ct);

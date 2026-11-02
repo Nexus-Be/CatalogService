@@ -55,7 +55,7 @@ public sealed record CreateVariantAttributeRequest(string AttrName, string AttrV
 public sealed record CreateVariantRequest(
     string SkuCode,
     string Name,
-    decimal Price,
+    decimal? Price = null,
     string? Currency = "VND",
     List<CreateVariantAttributeRequest>? Attributes = null);
 
