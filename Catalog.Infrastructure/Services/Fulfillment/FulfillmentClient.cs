@@ -121,7 +121,7 @@ public sealed class FulfillmentClient : IFulfillmentClient
                 note = request.Note ?? "Initial inventory declared by CatalogService"
             };
 
-            var response = await _httpClient.PostAsJsonAsync("api/v1/internal/inventories/declare", payload, cancellationToken);
+            var response = await _httpClient.PostAsJsonAsync("api/v1/inventories/initialize", payload, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 var result = await response.Content.ReadFromJsonAsync<InventoryClientResponse>(cancellationToken: cancellationToken);
