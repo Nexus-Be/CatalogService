@@ -18,8 +18,22 @@ public class InternalVariantsController : ControllerBase
         _productService = productService;
     }
 
+    /// <summary>Gets single variant details by ID (CAT-21). Used by Cart service.</summary>
+    [HttpGet("{id:guid}")]
+    [HttpGet("/api/v1/internal/catalog/skus/{id:guid}")]
+    [ProducesResponseType(typeof(VariantDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<VariantDetailDto>> GetVariantById(
+        Guid id,
+        CancellationToken ct)
+    {
+        var response = await _productService.GetVariantByIdAsync(id, ct);
+        return Ok(response);
+    }
+
     /// <summary>Batch gets variant details by a list of IDs (CAT-24). Used by Cart and Order services.</summary>
     [HttpPost]
+    [HttpPost("/api/v1/internal/catalog/skus:batch-get")]
     [ProducesResponseType(typeof(BatchVariantResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<BatchVariantResponse>> GetVariantsBatch(
         [FromBody] BatchGetVariantsRequest request,
@@ -39,5 +53,18 @@ public class InternalVariantsController : ControllerBase
         var response = await _productService.CheckVariantStatusBatchAsync(request, ct);
         return Ok(response);
     }
-}
 
+    /// <summary>Validates switching between variants within the same product (CAT-47). Used by Cart service.</summary>
+    [HttpPost("validate-switch")]
+    [HttpPost("/api/v1/internal/catalog/skus/validate-variant-switch")]
+    [ProducesResponseType(typeof(ValidateVariantSwitchResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ValidateVariantSwitchResponse>> ValidateVariantSwitch(
+        [FromBody] ValidateVariantSwitchRequest request,
+        CancellationToken ct)
+    {
+        var response = await _productService.ValidateVariantSwitchAsync(request, ct);
+        return Ok(response);
+    }
+}

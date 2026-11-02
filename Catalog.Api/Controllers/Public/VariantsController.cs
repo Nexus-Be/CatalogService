@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Catalog.Api.Extensions;
 using Catalog.Api.Filters;
 using Catalog.Application.Services.Product;
+using Catalog.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -93,6 +94,88 @@ public class VariantsController : ControllerBase
         }
 
         await _productService.SoftDeleteVariantAsync(id, currentUserId, ct);
+        return NoContent();
+    }
+
+    private static readonly string[] AllowedImageExtensions = { ".jpg", ".jpeg", ".png", ".webp" };
+    private const long MaxImageFileSizeBytes = 5 * 1024 * 1024; // 5 MB
+
+    /// <summary>Gets all images of a variant with fallback to product primary image.</summary>
+    [HttpGet("{id:guid}/images")]
+    [ProducesResponseType(typeof(IReadOnlyList<ProductImageDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetVariantImages([FromRoute] Guid id, CancellationToken ct)
+    {
+        var images = await _productService.GetVariantImagesAsync(id, ct);
+        return Ok(images);
+    }
+
+    /// <summary>Uploads an image specifically for a variant via Cloudinary. Max 3 images per variant, max 5MB.</summary>
+    [HttpPost("{id:guid}/images")]
+    [RequireRole("seller")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(ProductImageDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UploadVariantImage(
+        [FromRoute] Guid id,
+        IFormFile file,
+        [FromForm] string? altText = null,
+        [FromForm] short sortOrder = 0,
+        CancellationToken ct = default)
+    {
+        if (!this.TryGetUserId(out var currentUserId, out var errorResult))
+        {
+            return errorResult;
+        }
+
+        if (file == null || file.Length == 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_FILE", "Please select an image file to upload.");
+        }
+
+        if (file.Length > MaxImageFileSizeBytes)
+        {
+            throw new BusinessRuleValidationException("VAL_LIMIT_EXCEEDED", "Image file size exceeds the 5MB limit.");
+        }
+
+        var ext = System.IO.Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!System.Linq.Enumerable.Contains(AllowedImageExtensions, ext))
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Invalid image format. Supported formats: .jpg, .jpeg, .png, .webp.");
+        }
+
+        using var stream = file.OpenReadStream();
+        var uploadedImage = await _productService.AddVariantImageAsync(
+            id,
+            currentUserId,
+            stream,
+            file.FileName,
+            altText,
+            sortOrder,
+            ct);
+
+        return StatusCode(StatusCodes.Status201Created, uploadedImage);
+    }
+
+    /// <summary>Deletes an image from a variant.</summary>
+    [HttpDelete("{id:guid}/images/{imageId:guid}")]
+    [RequireRole("seller")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteVariantImage(
+        [FromRoute] Guid id,
+        [FromRoute] Guid imageId,
+        CancellationToken ct)
+    {
+        if (!this.TryGetUserId(out var currentUserId, out var errorResult))
+        {
+            return errorResult;
+        }
+
+        await _productService.DeleteImageByIdAsync(imageId, currentUserId, ct);
         return NoContent();
     }
 }

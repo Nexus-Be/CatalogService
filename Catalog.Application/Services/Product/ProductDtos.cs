@@ -14,6 +14,8 @@ public sealed record ProductDto(
 
 public sealed record ProductListItemDto(
     Guid ProductId,
+    Guid SellerId,
+    Guid CategoryId,
     string Name,
     string? Brand,
     string SaleType,
@@ -32,7 +34,9 @@ public sealed record ProductDetailVariantDto(
     decimal? Price,
     string Status,
     bool IsActive,
-    IReadOnlyList<ProductVariantAttributeDto> Attributes);
+    IReadOnlyList<ProductVariantAttributeDto> Attributes,
+    string? PrimaryImageUrl = null,
+    IReadOnlyList<ProductImageDto>? Images = null);
 
 public sealed record ProductDetailImageDto(
     Guid ImageId,
@@ -79,6 +83,8 @@ public sealed record ProductImageDto(
 public sealed record VariantDetailDto(
     Guid Id,
     Guid ProductId,
+    Guid SellerId,
+    string ProductName,
     string SkuCode,
     string Name,
     decimal? Price,
@@ -87,7 +93,10 @@ public sealed record VariantDetailDto(
     bool HasOrder,
     string Status,
     string? StatusReason,
-    IReadOnlyList<ProductVariantAttributeDto> Attributes);
+    bool IsPurchasable,
+    IReadOnlyList<ProductVariantAttributeDto> Attributes,
+    string? PrimaryImageUrl = null,
+    IReadOnlyList<ProductImageDto>? Images = null);
 
 public sealed record SellerProductListItemDto(
     Guid ProductId,
@@ -151,7 +160,8 @@ public sealed record BatchVariantItemDto(
     Guid SellerId,
     string SaleType,
     string? PrimaryImageUrl,
-    IReadOnlyList<ProductVariantAttributeDto> Attributes);
+    IReadOnlyList<ProductVariantAttributeDto> Attributes,
+    bool IsPurchasable);
 
 public sealed record BatchVariantResponse(
     IReadOnlyList<BatchVariantItemDto> Items,
@@ -173,3 +183,14 @@ public sealed record VariantStatusItemDto(
 public sealed record CheckVariantStatusResponse(
     IReadOnlyList<VariantStatusItemDto> Items,
     IReadOnlyList<Guid> NotFoundIds);
+
+
+public sealed record ValidateVariantSwitchResponse(
+    bool IsValid,
+    Guid ProductId,
+    Guid SellerId,
+    Guid NewSkuId,
+    string NewSkuName,
+    decimal NewUnitPrice,
+    bool IsPurchasable,
+    int WeightGrams = 200);

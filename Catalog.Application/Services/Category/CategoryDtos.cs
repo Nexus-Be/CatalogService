@@ -11,7 +11,10 @@ public sealed record CategoryDto(
     short Level,
     int SortOrder,
     bool IsDisabled,
-    IReadOnlyList<CategoryDto>? Children = null);
+    IReadOnlyList<CategoryDto>? Children = null)
+{
+    public bool IsActive => !IsDisabled;
+}
 
 public sealed record CategoryItemDto(
     Guid CategoryId,
@@ -20,4 +23,8 @@ public sealed record CategoryItemDto(
     string? Description,
     short Level,
     int SortOrder,
-    List<CategoryItemDto>? Children = null);
+    bool IsDisabled = false,
+    List<CategoryItemDto>? Children = null)
+{
+    public bool IsActive => !IsDisabled;
+}
