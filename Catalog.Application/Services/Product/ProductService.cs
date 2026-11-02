@@ -1,4 +1,4 @@
-namespace Catalog.Application.Services.Product;
+﻿namespace Catalog.Application.Services.Product;
 
 using System;
 using System.Collections.Generic;
@@ -237,6 +237,11 @@ public sealed class ProductService : IProductService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Product name cannot be empty.");
         }
 
+        if (request.SellerId == Guid.Empty)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Seller ID cannot be empty.");
+        }
+
         var trimmedName = request.Name.Trim();
         if (trimmedName.Length > 255)
         {
@@ -288,8 +293,64 @@ public sealed class ProductService : IProductService
 
         _dbContext.Products.Add(product);
 
-        // Discrepancy #3 Hybrid Solution: If caller provides initial variants, create them within the same transaction!
-        if (request.Variants != null && request.Variants.Count > 0)
+        var isAuction = request.SaleType == SaleType.Auction;
+
+        if (isAuction)
+        {
+            // For auction products: exactly one auction variant with Price = null
+            string aucSku;
+            string aucName = product.Name;
+            List<CreateVariantAttributeRequest>? aucAttributes = null;
+
+            if (request.Variants != null && request.Variants.Count > 0)
+            {
+                var firstVariant = request.Variants[0];
+                aucSku = !string.IsNullOrWhiteSpace(firstVariant.SkuCode)
+                    ? firstVariant.SkuCode.Trim()
+                    : $"AUC-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+                if (!string.IsNullOrWhiteSpace(firstVariant.Name)) aucName = firstVariant.Name.Trim();
+                aucAttributes = firstVariant.Attributes;
+            }
+            else
+            {
+                aucSku = $"AUC-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+            }
+
+            var aucVariant = new ProductVariant
+            {
+                Id = Guid.NewGuid(),
+                ProductId = product.Id,
+                SkuCode = aucSku,
+                Name = aucName,
+                Price = null,
+                Currency = "VND",
+                IsActive = true,
+                HasOrder = false,
+                Status = VariantStatus.Active,
+                CreatedAt = now,
+                UpdatedAt = now,
+                CreatedBy = request.SellerId,
+                UpdatedBy = request.SellerId,
+                IsDeleted = false
+            };
+
+            if (aucAttributes != null)
+            {
+                foreach (var attr in aucAttributes.Where(a => !string.IsNullOrWhiteSpace(a.AttrName)))
+                {
+                    aucVariant.Attributes.Add(new ProductVariantAttribute
+                    {
+                        Id = Guid.NewGuid(),
+                        VariantId = aucVariant.Id,
+                        AttrName = attr.AttrName.Trim(),
+                        AttrValue = attr.AttrValue.Trim()
+                    });
+                }
+            }
+
+            _dbContext.ProductVariants.Add(aucVariant);
+        }
+        else if (request.Variants != null && request.Variants.Count > 0)
         {
             if (request.Variants.Count > 10)
             {
@@ -318,9 +379,9 @@ public sealed class ProductService : IProductService
             for (int i = 0; i < request.Variants.Count; i++)
             {
                 var v = request.Variants[i];
-                if (v.Price <= 0)
+                if (!v.Price.HasValue || v.Price.Value <= 0)
                 {
-                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Price must be greater than 0 for all variants.");
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Price must be greater than 0 for all regular product variants.");
                 }
 
                 var variant = new ProductVariant
@@ -368,16 +429,8 @@ public sealed class ProductService : IProductService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        try
-        {
-            await _fulfillmentClient.InitializeInventoryAsync(
-                new InitializeInventoryClientRequest(product.Id, null, 0),
-                cancellationToken);
-        }
-        catch
-        {
-            // Logging or non-fatal fulfillment init failure
-        }
+        // NOTE: Draft products DO NOT initialize warehouse inventory.
+        // Inventory is initialized upon product activation (DRAFT -> ACTIVE).
 
         return new ProductDto(
             product.Id,
@@ -394,6 +447,16 @@ public sealed class ProductService : IProductService
         if (request == null || string.IsNullOrWhiteSpace(request.Name))
         {
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Product name cannot be empty.");
+        }
+
+        if (currentUserId == Guid.Empty)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Seller ID cannot be empty.");
+        }
+
+        if (request.SellerId.HasValue && request.SellerId.Value != Guid.Empty && request.SellerId.Value != currentUserId)
+        {
+            throw new BusinessRuleValidationException("FORBIDDEN", "You cannot create products on behalf of another seller.", 403);
         }
 
         var trimmedName = request.Name.Trim();
@@ -538,7 +601,12 @@ public sealed class ProductService : IProductService
 
         if (!string.IsNullOrWhiteSpace(request.Status) && Enum.TryParse<ProductStatus>(request.Status, true, out var parsedStatus))
         {
-            product.Status = parsedStatus;
+            if (parsedStatus != product.Status)
+            {
+                throw new BusinessRuleValidationException(
+                    "VAL_INVALID_INPUT",
+                    "Product status cannot be changed via this general update endpoint. Please use 'PATCH /api/v1/products/{id}/status' to transition product status.");
+            }
         }
 
         if (request.Specifications != null)
@@ -633,6 +701,29 @@ public sealed class ProductService : IProductService
             userId: currentUserId.ToString());
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Initialize physical warehouse inventory only when transitioning to ACTIVE for Regular products
+        if (oldStatus != ProductStatus.Active && newStatus == ProductStatus.Active && product.SaleType == SaleType.Regular)
+        {
+            var activeVariants = product.Variants
+                .Where(v => !v.IsDeleted && v.Status == VariantStatus.Active)
+                .ToList();
+
+            foreach (var variant in activeVariants)
+            {
+                try
+                {
+                    await _fulfillmentClient.InitializeInventoryForSkuAsync(
+                        variant.Id,
+                        product.SellerId,
+                        cancellationToken);
+                }
+                catch
+                {
+                    // Non-blocking: Fulfillment logging or connection failure should not abort product activation
+                }
+            }
+        }
 
         return new ProductDto(
             product.Id,
@@ -788,6 +879,16 @@ public sealed class ProductService : IProductService
         Guid currentUserId,
         CancellationToken cancellationToken = default)
     {
+        var image = await _dbContext.ProductImages
+            .AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == imageId && !i.IsDeleted, cancellationToken)
+            ?? throw new EntityNotFoundException("IMAGE_NOT_FOUND", "ProductImage", imageId);
+
+        if (image.ProductId != productId)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "The specified image does not belong to this product.");
+        }
+
         return await DeleteImageByIdAsync(imageId, currentUserId, cancellationToken);
     }
 
@@ -954,7 +1055,7 @@ public sealed class ProductService : IProductService
             throw new BusinessRuleValidationException("DUPLICATE_SKU", $"SKU code '{sku}' already exists in your shop.", 409);
         }
 
-        if (request.Price <= 0)
+        if (!request.Price.HasValue || request.Price.Value <= 0)
         {
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Price must be greater than 0.");
         }
@@ -997,15 +1098,21 @@ public sealed class ProductService : IProductService
         _dbContext.ProductVariants.Add(variant);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        try
+        // Only initialize physical inventory if the parent product is already ACTIVE and is a Regular product.
+        // If the product is still in DRAFT, inventory will be batch-initialized upon product activation.
+        if (product.SaleType == SaleType.Regular && product.Status == ProductStatus.Active)
         {
-            await _fulfillmentClient.InitializeInventoryAsync(
-                new InitializeInventoryClientRequest(variant.Id, null, 0),
-                cancellationToken);
-        }
-        catch
-        {
-            // Non-blocking fulfillment notification
+            try
+            {
+                await _fulfillmentClient.InitializeInventoryForSkuAsync(
+                    variant.Id,
+                    product.SellerId,
+                    cancellationToken);
+            }
+            catch
+            {
+                // Non-blocking fulfillment notification
+            }
         }
 
         return new VariantDetailDto(

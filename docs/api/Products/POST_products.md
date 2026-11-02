@@ -11,10 +11,10 @@
 - **HTTP Method:** `POST`
 - **Route Endpoint:** `/api/v1/products`
 - **Quyền hạn (RBAC Policy):** `RequireRole("seller", "admin")`
-- **Quy tắc Sở hữu (Resource Ownership):** Người bán chỉ được phép tạo sản phẩm cho chính mình (`sellerId == currentUserId`). Admin có quyền tạo thay thế người bán khác.
+- **Quy tắc Sở hữu (Resource Ownership):** Cả Seller lẫn Admin chỉ được phép tạo sản phẩm cho chính mình (`sellerId == currentUserId`). Hệ thống cấm tuyệt đối việc tạo hộ sản phẩm cho người khác; nếu `sellerId` được gửi trong request body mà khác với `currentUserId`, hệ thống sẽ từ chối với mã lỗi `403 Forbidden` (`FORBIDDEN`).
 - **Controller:** `Catalog.Api/Controllers/Public/ProductsController.cs`
 - **Application Contract:** `Catalog.Application/Services/Product/IProductService.cs`
-- **Tương tác Liên Service:** Gọi `IFulfillmentClient` để đồng bộ thông tin mặt hàng sang Fulfillment Service khi có biến thể ban đầu.
+- **Tương tác Liên Service:** Sản phẩm tạo ở trạng thái `DRAFT` **không gọi tạo kho** sang Fulfillment Service để tránh tạo kho chết. Tồn kho chỉ được khởi tạo khi sản phẩm được chuyển sang trạng thái `ACTIVE` (đối với sản phẩm Regular). Sản phẩm `Auction` không quản lý tồn kho và không gọi Fulfillment.
 
 ---
 
@@ -121,7 +121,7 @@ public sealed record ProductDto(
 | `400 Bad Request` | `VAL_INVALID_INPUT` | `Product name is required.` | Tên sản phẩm để trống hoặc dưới 3 ký tự |
 | `400 Bad Request` | `VAL_INVALID_INPUT` | `Category ID is required.` | `categoryId` không hợp lệ hoặc để trống |
 | `401 Unauthorized` | `UNAUTHORIZED` | `Authentication is required to access this resource.` | Thiếu Access Token hoặc token hết hạn |
-| `403 Forbidden` | `FORBIDDEN` | `You cannot create products on behalf of another seller.` | Người bán truyền `sellerId` khác với User ID của mình |
+| `403 Forbidden` | `FORBIDDEN` | `You cannot create products on behalf of another seller.` | Người dùng (Seller hoặc Admin) truyền `sellerId` khác với User ID của mình |
 | `404 Not Found` | `CATEGORY_NOT_FOUND` | `Category not found or is currently inactive.` | `categoryId` không tồn tại trong hệ thống |
 | `409 Conflict` | `DUPLICATE_SKU` | `One or more SKU codes already exist in the catalog.` | Mã SKU trong danh sách `variants` bị trùng lặp |
 | `500 Internal Error` | `INTERNAL_SERVER_ERROR` | `An unexpected error occurred while processing the request.` | Lỗi không mong muốn trong quá trình lưu dữ liệu |

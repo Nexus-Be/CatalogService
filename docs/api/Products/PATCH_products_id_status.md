@@ -14,6 +14,7 @@
 - **Quy tắc Sở hữu (Resource Ownership):** Người bán chỉ được phép thay đổi trạng thái sản phẩm thuộc quyền sở hữu của chính mình (`product.SellerId == currentUserId`). Admin được phép can thiệp để kiểm duyệt hoặc hạ sản phẩm vi phạm.
 - **Controller:** `Catalog.Api/Controllers/Public/ProductsController.cs`
 - **Application Contract:** `Catalog.Application/Services/Product/IProductService.cs`
+- **Tương tác Liên Service:** Khi chuyển trạng thái từ `DRAFT` sang `ACTIVE` cho sản phẩm bán thường (`SaleType.Regular`), hệ thống tự động quét tất cả các biến thể Active của sản phẩm và gọi `IFulfillmentClient.InitializeInventoryAsync` để khởi tạo kho chính thức cho từng `variant.Id`. Sản phẩm đấu giá (`Auction`) không tạo kho.
 
 ---
 

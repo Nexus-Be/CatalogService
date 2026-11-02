@@ -14,7 +14,7 @@
 - **Quy tắc Sở hữu (Resource Ownership):** Bắt buộc sản phẩm mục tiêu phải thuộc quyền sở hữu của người bán (`product.SellerId == currentUserId`). Admin được quyền can thiệp.
 - **Controller:** `Catalog.Api/Controllers/Public/ProductsController.cs`
 - **Application Contract:** `Catalog.Application/Services/Product/IProductService.cs`
-- **Tương tác Liên Service:** Gọi `IFulfillmentClient.CreateProductAsync` để đồng bộ mã SKU mới sang Fulfillment Service.
+- **Tương tác Liên Service:** Gọi `IFulfillmentClient.InitializeInventoryAsync` để khởi tạo kho vật lý cho biến thể mới nếu sản phẩm cha đã ở trạng thái `ACTIVE` (đối với sản phẩm Regular). Nếu sản phẩm cha đang là `DRAFT` hoặc `Auction`, hệ thống không gọi tạo kho.
 
 ---
 
