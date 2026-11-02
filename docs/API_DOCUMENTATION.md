@@ -20,7 +20,7 @@
 | **04** | `PUT` | `/api/v1/categories/{id}` | `CategoriesController.Update` | Phân hệ Danh mục (CAT-16) |
 | **05** | `PATCH` | `/api/v1/categories/{id}` | `CategoriesController.Update` (Alias) | Phân hệ Danh mục (CAT-16) |
 | **06** | `DELETE` | `/api/v1/categories/{id}` | `CategoriesController.Delete` | Phân hệ Danh mục (CAT-17) |
-| **07** | `GET` | `/api/v1/products` | `ProductsController.Search` | Phân hệ Sản phẩm (CAT-05) |
+| **07** | `GET` | `/api/v1/products` & `/api/v1/products/search` (Alias) | `ProductsController.Search` | Phân hệ Sản phẩm (CAT-05 / CAT-20 / CAT-21) |
 | **08** | `GET` | `/api/v1/products/{id}` | `ProductsController.GetDetail` | Phân hệ Sản phẩm (CAT-06) |
 | **09** | `GET` | `/api/v1/seller/products` | `SellerProductsController.List` | Phân hệ Sản phẩm (CAT-44) |
 | **10** | `GET` | `/api/v1/seller/products/{id}` | `SellerProductsController.GetDetail` | Phân hệ Sản phẩm (CAT-45) |
@@ -280,13 +280,13 @@
 
 ---
 
-### API 07. `GET /api/v1/products` — Tìm kiếm và lọc sản phẩm công khai [CAT-05]
+### API 07. `GET /api/v1/products` & `GET /api/v1/products/search` (Alias) — Tìm kiếm và lọc sản phẩm công khai [CAT-05 / CAT-20 / CAT-21]
 
 #### 1. Contract Handoff Block
 | Thuộc tính (Attribute) | Giá trị đặc tả (Specification Value) |
 | :--- | :--- |
 | **Service** | `CatalogService` (Port 8002) |
-| **Endpoint** | `GET /api/v1/products` |
+| **Endpoint** | `GET /api/v1/products` & `GET /api/v1/products/search` (Alias) |
 | **Controller** | `Catalog.Api.Controllers.Public.ProductsController.Search` |
 | **Application Service** | `Catalog.Application.Services.Product.IProductService.SearchAsync` |
 | **Primary Entity** | `Catalog.Domain.Entities.Product` |

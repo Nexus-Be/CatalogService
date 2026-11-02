@@ -30,8 +30,9 @@ public class ProductsController : ControllerBase
         _productService = productService;
     }
 
-    /// <summary>Searches and lists active products with filtering and pagination.</summary>
+    /// <summary>Searches and lists active products with filtering and pagination (supports alias /search).</summary>
     [HttpGet]
+    [HttpGet("search")]
     [ProducesResponseType(typeof(PagedData<ProductListItemDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedData<ProductListItemDto>>> Search(
         [FromQuery] int page = 1,
