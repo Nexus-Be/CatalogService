@@ -359,3 +359,11 @@
 
 
 
+
+### 32. Thêm Alias Route `/api/v1/products/search` cho Tìm kiếm Sản phẩm (CAT-20/21)
+- **Mục tiêu:** Đáp ứng đầy đủ quy chuẩn đặc tả trong `R67_GET_PRODUCTS_SEARCH.md` (CAT-20/CAT-21) mà không duplicate mã nguồn nghiệp vụ.
+- **Thực hiện:**
+  - Thêm attribute alias `[HttpGet("search")]` trên action `ProductsController.Search` (bên cạnh route chính `[HttpGet]`).
+  - Hỗ trợ client gọi cả hai đường dẫn: `GET /api/v1/products` và `GET /api/v1/products/search`.
+  - Cả hai đường dẫn đều xử lý thống nhất qua `IProductService.SearchAsync`, hỗ trợ tìm kiếm từ khóa (`keyword`), bộ lọc nâng cao (`categoryId`, `sellerId`, `saleType`, `minPrice`, `maxPrice`, `brand`, `minRating`), sắp xếp (`sortBy`, `sortDirection`) và phân trang (`page`, `pageSize`).
+  - Đồng bộ cập nhật tài liệu kỹ thuật trong `docs/api/Products/GET_products.md` và `docs/API_DOCUMENTATION.md`.

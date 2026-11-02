@@ -1,18 +1,18 @@
-# CATALOG SERVICE - GET /api/v1/products
+# CATALOG SERVICE - GET /api/v1/products & GET /api/v1/products/search
 
-> **Feature / Use Case:** Tìm kiếm và duyệt danh sách sản phẩm công khai [CAT-05]
+> **Feature / Use Case:** Tìm kiếm và duyệt danh sách sản phẩm công khai [CAT-05 / CAT-20 / CAT-21]
 > **Trạng thái:** ✅ VERIFIED
-> **Ngày tạo:** 2026-11-01
+> **Ngày tạo:** 2026-11-01 (Updated 2026-11-02: Added `/api/v1/products/search` alias)
 > **Tác giả:** Nexus Team & AI Agent
 
 ---
 
 ## 1. Thông tin Định tuyến & RBAC (Routing & Authorization)
 - **HTTP Method:** `GET`
-- **Route Endpoint:** `/api/v1/products`
+- **Route Endpoint:** `/api/v1/products` và alias `/api/v1/products/search`
 - **Quyền hạn (RBAC Policy):** `AllowAnonymous` (Public - phục vụ khách mua hàng)
 - **Quy tắc Sở hữu (Resource Ownership):** Không áp dụng (chỉ hiển thị sản phẩm trạng thái `ACTIVE`)
-- **Controller:** `Catalog.Api/Controllers/Public/ProductsController.cs`
+- **Controller:** `Catalog.Api/Controllers/Public/ProductsController.cs` (`Search`)
 - **Application Contract:** `Catalog.Application/Services/Product/IProductService.cs`
 
 ---
