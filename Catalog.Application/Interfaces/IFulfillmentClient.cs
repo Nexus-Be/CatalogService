@@ -60,6 +60,7 @@ public interface IFulfillmentClient
     Task<InventoryClientResponse?> InitializeInventoryForSkuAsync(
         Guid skuId,
         Guid sellerId,
+        int initialQuantity = 0,
         CancellationToken cancellationToken = default);
 
     /// <summary>

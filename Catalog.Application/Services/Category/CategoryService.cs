@@ -89,11 +89,28 @@ public sealed class CategoryService : ICategoryService
     public async Task<PagedData<CategoryItemDto>> GetCategoriesAsync(CategoryListQuery query, CancellationToken cancellationToken = default)
     {
         var (safePage, safePageSize) = PaginationConstants.Normalize(query.Page, query.PageSize);
-        var isDesc = string.Equals(query.SortDirection, "desc", StringComparison.OrdinalIgnoreCase);
+        var rawSortBy = query.SortBy?.Trim().ToLowerInvariant() ?? "sortorder";
+        var allowedSortFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "sortorder", "name", "level", "createdat" };
+        if (!allowedSortFields.Contains(rawSortBy))
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Invalid sortBy parameter '{query.SortBy}'. Allowed values: sortOrder, name, level, createdAt.");
+        }
+
+        var rawSortDir = query.SortDirection?.Trim().ToLowerInvariant() ?? "asc";
+        if (rawSortDir != "asc" && rawSortDir != "desc")
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Invalid sortDirection parameter '{query.SortDirection}'. Allowed values: asc, desc.");
+        }
+        var isDesc = rawSortDir == "desc";
 
         var categoriesQuery = _dbContext.Categories
             .AsNoTracking()
-            .Where(c => !c.IsDeleted && !c.IsDisabled);
+            .Where(c => !c.IsDeleted);
+
+        if (!query.IncludeDisabled)
+        {
+            categoriesQuery = categoriesQuery.Where(c => !c.IsDisabled);
+        }
 
         if (!string.IsNullOrWhiteSpace(query.Keyword))
         {
@@ -110,16 +127,16 @@ public sealed class CategoryService : ICategoryService
 
             var totalCount = await categoriesQuery.CountAsync(cancellationToken);
 
-            IOrderedQueryable<Category> orderedQuery = (query.SortBy?.ToLowerInvariant(), isDesc) switch
+            IOrderedQueryable<Category> orderedQuery = (rawSortBy, isDesc) switch
             {
-                ("name", false) => categoriesQuery.OrderBy(c => c.Name).ThenBy(c => c.SortOrder),
-                ("name", true) => categoriesQuery.OrderByDescending(c => c.Name).ThenBy(c => c.SortOrder),
-                ("level", false) => categoriesQuery.OrderBy(c => c.Level).ThenBy(c => c.SortOrder),
-                ("level", true) => categoriesQuery.OrderByDescending(c => c.Level).ThenBy(c => c.SortOrder),
-                ("createdat", false) => categoriesQuery.OrderBy(c => c.CreatedAt).ThenBy(c => c.SortOrder),
-                ("createdat", true) => categoriesQuery.OrderByDescending(c => c.CreatedAt).ThenBy(c => c.SortOrder),
-                ("sortorder", true) => categoriesQuery.OrderByDescending(c => c.SortOrder).ThenBy(c => c.Name),
-                _ => categoriesQuery.OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+                ("name", false) => categoriesQuery.OrderBy(c => c.Name).ThenBy(c => c.SortOrder).ThenBy(c => c.Id),
+                ("name", true) => categoriesQuery.OrderByDescending(c => c.Name).ThenBy(c => c.SortOrder).ThenBy(c => c.Id),
+                ("level", false) => categoriesQuery.OrderBy(c => c.Level).ThenBy(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id),
+                ("level", true) => categoriesQuery.OrderByDescending(c => c.Level).ThenBy(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id),
+                ("createdat", false) => categoriesQuery.OrderBy(c => c.CreatedAt).ThenBy(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id),
+                ("createdat", true) => categoriesQuery.OrderByDescending(c => c.CreatedAt).ThenBy(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id),
+                ("sortorder", true) => categoriesQuery.OrderByDescending(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id),
+                _ => categoriesQuery.OrderBy(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id)
             };
 
             var items = await orderedQuery
@@ -132,6 +149,7 @@ public sealed class CategoryService : ICategoryService
                     c.Description,
                     c.Level,
                     c.SortOrder,
+                    c.IsDisabled,
                     null))
                 .ToListAsync(cancellationToken);
 
@@ -142,16 +160,16 @@ public sealed class CategoryService : ICategoryService
         var rootQuery = categoriesQuery.Where(c => c.ParentId == query.ParentId);
         var totalRootCount = await rootQuery.CountAsync(cancellationToken);
 
-        IOrderedQueryable<Category> orderedRoots = (query.SortBy?.ToLowerInvariant(), isDesc) switch
+        IOrderedQueryable<Category> orderedRoots = (rawSortBy, isDesc) switch
         {
-            ("name", false) => rootQuery.OrderBy(c => c.Name).ThenBy(c => c.SortOrder),
-            ("name", true) => rootQuery.OrderByDescending(c => c.Name).ThenBy(c => c.SortOrder),
-            ("level", false) => rootQuery.OrderBy(c => c.Level).ThenBy(c => c.SortOrder),
-            ("level", true) => rootQuery.OrderByDescending(c => c.Level).ThenBy(c => c.SortOrder),
-            ("createdat", false) => rootQuery.OrderBy(c => c.CreatedAt).ThenBy(c => c.SortOrder),
-            ("createdat", true) => rootQuery.OrderByDescending(c => c.CreatedAt).ThenBy(c => c.SortOrder),
-            ("sortorder", true) => rootQuery.OrderByDescending(c => c.SortOrder).ThenBy(c => c.Name),
-            _ => rootQuery.OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+            ("name", false) => rootQuery.OrderBy(c => c.Name).ThenBy(c => c.SortOrder).ThenBy(c => c.Id),
+            ("name", true) => rootQuery.OrderByDescending(c => c.Name).ThenBy(c => c.SortOrder).ThenBy(c => c.Id),
+            ("level", false) => rootQuery.OrderBy(c => c.Level).ThenBy(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id),
+            ("level", true) => rootQuery.OrderByDescending(c => c.Level).ThenBy(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id),
+            ("createdat", false) => rootQuery.OrderBy(c => c.CreatedAt).ThenBy(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id),
+            ("createdat", true) => rootQuery.OrderByDescending(c => c.CreatedAt).ThenBy(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id),
+            ("sortorder", true) => rootQuery.OrderByDescending(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id),
+            _ => rootQuery.OrderBy(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id)
         };
 
         var pagedRoots = await orderedRoots
@@ -164,16 +182,25 @@ public sealed class CategoryService : ICategoryService
                 c.Description,
                 c.Level,
                 c.SortOrder,
+                c.IsDisabled,
                 new List<CategoryItemDto>()))
             .ToListAsync(cancellationToken);
 
         if (pagedRoots.Count > 0)
         {
-            var allDescendants = await _dbContext.Categories
+            var descendantsQuery = _dbContext.Categories
                 .AsNoTracking()
-                .Where(c => !c.IsDeleted && !c.IsDisabled && c.ParentId != null)
+                .Where(c => !c.IsDeleted && c.ParentId != null);
+
+            if (!query.IncludeDisabled)
+            {
+                descendantsQuery = descendantsQuery.Where(c => !c.IsDisabled);
+            }
+
+            var allDescendants = await descendantsQuery
                 .OrderBy(c => c.SortOrder)
                 .ThenBy(c => c.Name)
+                .ThenBy(c => c.Id)
                 .Select(c => new CategoryItemDto(
                     c.Id,
                     c.ParentId,
@@ -181,6 +208,7 @@ public sealed class CategoryService : ICategoryService
                     c.Description,
                     c.Level,
                     c.SortOrder,
+                    c.IsDisabled,
                     new List<CategoryItemDto>()))
                 .ToListAsync(cancellationToken);
 
@@ -215,6 +243,16 @@ public sealed class CategoryService : ICategoryService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Category name is required.");
         }
 
+        if (request.Level < 1)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Category level must be greater than or equal to 1.");
+        }
+
+        if (request.SortOrder < 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Sort order must be greater than or equal to 0.");
+        }
+
         var trimmedName = request.Name.Trim();
         if (trimmedName.Length > 100)
         {
@@ -230,15 +268,38 @@ public sealed class CategoryService : ICategoryService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Category with name '{trimmedName}' already exists.");
         }
 
-        short level = request.Level;
-        if (request.ParentId.HasValue)
+        short resolvedLevel;
+        Guid? resolvedParentId = null;
+
+        if (request.ParentId.HasValue && request.ParentId.Value != Guid.Empty)
         {
             var parent = await _dbContext.Categories
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.Id == request.ParentId.Value && !c.IsDeleted, cancellationToken)
                 ?? throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Parent category with ID '{request.ParentId.Value}' does not exist.");
 
-            level = (short)(parent.Level + 1);
+            resolvedParentId = parent.Id;
+            resolvedLevel = (short)(parent.Level + 1);
+
+            // If caller explicitly specified a Level, it must match parent.Level + 1
+            if (request.Level != 1 && request.Level != resolvedLevel)
+            {
+                throw new BusinessRuleValidationException(
+                    "VAL_INVALID_INPUT",
+                    $"Category level must be {resolvedLevel} when parent category is at level {parent.Level}. Provided level: {request.Level}.");
+            }
+        }
+        else
+        {
+            // Root category (ParentId is null or empty)
+            if (request.Level > 1)
+            {
+                throw new BusinessRuleValidationException(
+                    "VAL_INVALID_INPUT",
+                    $"Parent category ID is required for categories at level {request.Level}. Only root categories (level 1) can have no parent.");
+            }
+
+            resolvedLevel = 1;
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -247,8 +308,8 @@ public sealed class CategoryService : ICategoryService
             Id = Guid.NewGuid(),
             Name = trimmedName,
             Description = request.Description?.Trim(),
-            ParentId = request.ParentId,
-            Level = level,
+            ParentId = resolvedParentId,
+            Level = resolvedLevel,
             SortOrder = request.SortOrder,
             IsDisabled = false,
             CreatedAt = now,
@@ -285,6 +346,16 @@ public sealed class CategoryService : ICategoryService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Category name is required.");
         }
 
+        if (request.Level < 1)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Category level must be greater than or equal to 1.");
+        }
+
+        if (request.SortOrder < 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Sort order must be greater than or equal to 0.");
+        }
+
         var trimmedName = request.Name.Trim();
         if (trimmedName.Length > 100)
         {
@@ -302,6 +373,33 @@ public sealed class CategoryService : ICategoryService
         if (isDuplicate)
         {
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Category with name '{trimmedName}' already exists.");
+        }
+
+        if (category.ParentId.HasValue)
+        {
+            var parent = await _dbContext.Categories
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == category.ParentId.Value && !c.IsDeleted, cancellationToken);
+
+            if (parent != null)
+            {
+                short expectedLevel = (short)(parent.Level + 1);
+                if (request.Level != expectedLevel)
+                {
+                    throw new BusinessRuleValidationException(
+                        "VAL_INVALID_INPUT",
+                        $"Category level must match parent level + 1 ({expectedLevel}). Provided level: {request.Level}.");
+                }
+            }
+        }
+        else
+        {
+            if (request.Level != 1)
+            {
+                throw new BusinessRuleValidationException(
+                    "VAL_INVALID_INPUT",
+                    "Root categories (categories without a parent) must remain at level 1.");
+            }
         }
 
         var oldValues = new { category.Name, category.Description, category.Level, category.SortOrder, category.IsDisabled };
@@ -346,16 +444,16 @@ public sealed class CategoryService : ICategoryService
 
         if (hasChildren)
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot delete a category that contains child categories.");
+            throw new BusinessRuleValidationException("CATEGORY_HAS_CHILDREN", "Cannot delete a category that contains child categories. Please delete or reassign child categories first.");
         }
 
-        var hasActiveProducts = await _dbContext.Products
+        var hasProducts = await _dbContext.Products
             .AsNoTracking()
             .AnyAsync(p => p.CategoryId == id && !p.IsDeleted, cancellationToken);
 
-        if (hasActiveProducts)
+        if (hasProducts)
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot delete a category that contains active products.");
+            throw new BusinessRuleValidationException("CATEGORY_HAS_PRODUCTS", "Cannot delete a category that contains products. Please reassign or delete associated products first.");
         }
 
         var now = DateTimeOffset.UtcNow;

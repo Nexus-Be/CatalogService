@@ -3,6 +3,7 @@ namespace Catalog.Application.Interfaces;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Catalog.Domain.Entities;
 
 public interface ICatalogDbContext
@@ -16,6 +17,7 @@ public interface ICatalogDbContext
     DbSet<PurchaseRecord> PurchaseRecords { get; }
     DbSet<ProductReview> ProductReviews { get; }
     DbSet<AuditLog> AuditLogs { get; }
+    DatabaseFacade Database { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

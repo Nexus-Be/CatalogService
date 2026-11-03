@@ -57,7 +57,8 @@ public sealed record CreateVariantRequest(
     string Name,
     decimal? Price = null,
     string? Currency = "VND",
-    List<CreateVariantAttributeRequest>? Attributes = null);
+    List<CreateVariantAttributeRequest>? Attributes = null,
+    int Quantity = 0);
 
 public sealed record UpdateVariantRequest(
     string Name,
@@ -92,6 +93,10 @@ public sealed record BatchGetVariantsRequest(List<Guid> VariantIds);
 public sealed record CheckVariantStatusRequest(
     List<Guid> VariantIds,
     string Purpose);
+
+public sealed record ValidateVariantSwitchRequest(
+    Guid CurrentSkuId,
+    Guid NewSkuId);
 
 public sealed record ReserveStockRequest(
     Guid ProductId,

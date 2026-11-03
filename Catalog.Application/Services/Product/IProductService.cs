@@ -52,6 +52,19 @@ public interface IProductService
         Guid productId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<ProductImageDto>> GetVariantImagesAsync(
+        Guid variantId,
+        CancellationToken cancellationToken = default);
+
+    Task<ProductImageDto> AddVariantImageAsync(
+        Guid variantId,
+        Guid currentUserId,
+        System.IO.Stream fileStream,
+        string fileName,
+        string? altText = null,
+        short sortOrder = 0,
+        CancellationToken cancellationToken = default);
+
     // Variant Management (CAT-07 to CAT-11, CAT-42)
     Task<VariantDetailDto> GetVariantByIdAsync(
         Guid variantId,
@@ -104,5 +117,9 @@ public interface IProductService
 
     Task<CheckVariantStatusResponse> CheckVariantStatusBatchAsync(
         CheckVariantStatusRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<ValidateVariantSwitchResponse> ValidateVariantSwitchAsync(
+        ValidateVariantSwitchRequest request,
         CancellationToken cancellationToken = default);
 }
