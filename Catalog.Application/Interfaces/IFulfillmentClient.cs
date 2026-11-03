@@ -5,13 +5,22 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
+using System.Text.Json.Serialization;
+
 public record WarehouseClientDto(
     Guid Id,
     string Code,
     string Name,
     string? Address,
-    bool IsActive,
-    Guid? SellerId);
+    bool IsDisabled = false,
+    Guid? SellerId = null)
+{
+    [JsonPropertyName("isActive")]
+    public bool? ExplicitIsActive { get; init; }
+
+    [JsonIgnore]
+    public bool IsActive => ExplicitIsActive ?? !IsDisabled;
+}
 
 public record DeclareInventoryClientRequest(
     Guid SkuId,

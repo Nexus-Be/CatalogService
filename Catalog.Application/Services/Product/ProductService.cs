@@ -271,6 +271,11 @@ public sealed class ProductService : IProductService
             .FirstOrDefaultAsync(c => c.Id == request.CategoryId && !c.IsDeleted, cancellationToken)
             ?? throw new EntityNotFoundException("CATEGORY_NOT_FOUND", "Category", request.CategoryId);
 
+        if (category.IsDisabled)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot assign product to a disabled category.");
+        }
+
         var hasChildren = await _dbContext.Categories
             .AsNoTracking()
             .AnyAsync(c => c.ParentId == request.CategoryId && !c.IsDeleted, cancellationToken);
@@ -516,6 +521,11 @@ public sealed class ProductService : IProductService
             .FirstOrDefaultAsync(c => c.Id == request.CategoryId && !c.IsDeleted, cancellationToken)
             ?? throw new EntityNotFoundException("CATEGORY_NOT_FOUND", "Category", request.CategoryId);
 
+        if (category.IsDisabled)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot assign product to a disabled category.");
+        }
+
         var hasChildren = await _dbContext.Categories
             .AsNoTracking()
             .AnyAsync(c => c.ParentId == request.CategoryId && !c.IsDeleted, cancellationToken);
@@ -622,13 +632,23 @@ public sealed class ProductService : IProductService
 
         if (request.CategoryId.HasValue && request.CategoryId.Value != Guid.Empty && request.CategoryId.Value != product.CategoryId)
         {
-            var categoryExists = await _dbContext.Categories
+            var category = await _dbContext.Categories
                 .AsNoTracking()
-                .AnyAsync(c => c.Id == request.CategoryId.Value && !c.IsDeleted, cancellationToken);
+                .FirstOrDefaultAsync(c => c.Id == request.CategoryId.Value && !c.IsDeleted, cancellationToken)
+                ?? throw new EntityNotFoundException("CATEGORY_NOT_FOUND", "Category", request.CategoryId.Value);
 
-            if (!categoryExists)
+            if (category.IsDisabled)
             {
-                throw new EntityNotFoundException("CATEGORY_NOT_FOUND", "Category", request.CategoryId.Value);
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot assign product to a disabled category.");
+            }
+
+            var hasChildren = await _dbContext.Categories
+                .AsNoTracking()
+                .AnyAsync(c => c.ParentId == request.CategoryId.Value && !c.IsDeleted, cancellationToken);
+
+            if (hasChildren)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Products can only be assigned to a leaf category.");
             }
 
             product.CategoryId = request.CategoryId.Value;
