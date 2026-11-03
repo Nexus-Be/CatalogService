@@ -20,6 +20,15 @@ public static class ServiceDefaultsExtensions
         services.AddServiceObservability(configuration, serviceName);
         services.AddHttpContextAccessor();
         services.AddEndpointsApiExplorer();
+        services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(policy =>
+            {
+                policy.AllowAnyOrigin()
+                      .AllowAnyMethod()
+                      .AllowAnyHeader();
+            });
+        });
 
         services.AddSwaggerGen(options =>
         {
@@ -133,6 +142,7 @@ public static class ServiceDefaultsExtensions
 
     public static WebApplication UseServiceDefaults(this WebApplication app)
     {
+        app.UseCors();
         app.UseGlobalExceptionHandler();
         // Internal service key check is temporarily disabled. Inter-service calls use plain REST routes.
         // app.UseMiddleware<InternalServiceAuthMiddleware>();

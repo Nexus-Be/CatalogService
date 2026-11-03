@@ -43,12 +43,12 @@ public static class DependencyInjection
             ?? "http://localhost:8006/";
 
         // Internal service key handler is temporarily disabled. Inter-service calls use plain REST routes.
-        // services.AddTransient<InternalServiceAuthHandler>();
+        services.AddTransient<InternalServiceAuthHandler>();
         services.AddHttpClient<IFulfillmentClient, FulfillmentClient>(client =>
         {
             client.BaseAddress = new Uri(fulfillmentBaseUrl.TrimEnd('/') + "/");
             client.Timeout = TimeSpan.FromSeconds(10);
-        });
+        }).AddHttpMessageHandler<InternalServiceAuthHandler>();
 
         return services;
     }

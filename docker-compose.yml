@@ -17,6 +17,9 @@ services:
       - "${CATALOG_SERVICE_PORT:-8002}:8002"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
       ConnectionStrings__DefaultConnection: "${CATALOG_DB_CONNECTION:?CATALOG_DB_CONNECTION is required}"
