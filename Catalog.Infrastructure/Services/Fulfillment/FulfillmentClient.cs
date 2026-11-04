@@ -125,8 +125,8 @@ public sealed class FulfillmentClient : IFulfillmentClient
             if (response.IsSuccessStatusCode)
             {
                 var result = await response.Content.ReadFromJsonAsync<InventoryClientResponse>(cancellationToken: cancellationToken);
-                _logger.LogInformation("[REST Internal Fulfillment] Declared inventory for SKU '{SkuId}' at Warehouse '{WarehouseId}'.",
-                    request.SkuId, request.WarehouseId);
+                _logger.LogInformation("[REST Internal Fulfillment] Declared inventory for SKU '{SkuId}' at Warehouse '{WarehouseId}' with Quantity {Quantity}.",
+                    request.SkuId, request.WarehouseId, request.Quantity);
                 return result;
             }
 
@@ -145,6 +145,7 @@ public sealed class FulfillmentClient : IFulfillmentClient
     public async Task<InventoryClientResponse?> InitializeInventoryForSkuAsync(
         Guid skuId,
         Guid sellerId,
+        int initialQuantity = 0,
         CancellationToken cancellationToken = default)
     {
         Guid? targetWarehouseId = null;
@@ -176,7 +177,7 @@ public sealed class FulfillmentClient : IFulfillmentClient
         if (targetWarehouseId.HasValue)
         {
             return await DeclareInventoryAsync(
-                new DeclareInventoryClientRequest(skuId, targetWarehouseId.Value, 0, "Initial inventory declared by CatalogService"),
+                new DeclareInventoryClientRequest(skuId, targetWarehouseId.Value, initialQuantity, "Initial inventory declared by CatalogService"),
                 cancellationToken);
         }
 
@@ -196,6 +197,6 @@ public sealed class FulfillmentClient : IFulfillmentClient
                 cancellationToken);
         }
 
-        return await InitializeInventoryForSkuAsync(request.SkuId, Guid.Empty, cancellationToken);
+        return await InitializeInventoryForSkuAsync(request.SkuId, Guid.Empty, request.InitialQuantity, cancellationToken);
     }
 }

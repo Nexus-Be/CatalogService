@@ -1,4 +1,4 @@
-﻿namespace Catalog.Application.Services.Product;
+namespace Catalog.Application.Services.Product;
 
 using System;
 using System.Collections.Generic;
@@ -154,6 +154,8 @@ public sealed class ProductService : IProductService
             .Select(p => new
             {
                 p.Id,
+                p.SellerId,
+                p.CategoryId,
                 p.Name,
                 p.Brand,
                 p.SaleType,
@@ -170,6 +172,8 @@ public sealed class ProductService : IProductService
 
         var items = rows.Select(r => new ProductListItemDto(
             r.Id,
+            r.SellerId,
+            r.CategoryId,
             r.Name,
             r.Brand,
             r.SaleType.ToString(),
@@ -209,7 +213,11 @@ public sealed class ProductService : IProductService
                     v.Price,
                     v.Status.ToString(),
                     v.IsActive,
-                    v.Attributes.Select(a => new ProductVariantAttributeDto(a.AttrName, a.AttrValue)).ToList()
+                    v.Attributes.Select(a => new ProductVariantAttributeDto(a.AttrName, a.AttrValue)).ToList(),
+                    p.Images.Where(i => !i.IsDeleted && i.VariantId == v.Id && i.IsActive).OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault()
+                        ?? p.Images.Where(i => !i.IsDeleted && i.IsActive).OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault()
+                        ?? DefaultImageUrl,
+                    p.Images.Where(i => !i.IsDeleted && i.VariantId == v.Id).OrderBy(i => i.SortOrder).Select(i => new ProductImageDto(i.Id, i.ProductId, i.VariantId, i.Url, i.AltText, i.IsActive, i.SortOrder)).ToList()
                 )).ToList(),
                 p.Images.Where(i => !i.IsDeleted).OrderBy(i => i.SortOrder).Select(i => new ProductDetailImageDto(
                     i.Id,
@@ -263,6 +271,11 @@ public sealed class ProductService : IProductService
             .FirstOrDefaultAsync(c => c.Id == request.CategoryId && !c.IsDeleted, cancellationToken)
             ?? throw new EntityNotFoundException("CATEGORY_NOT_FOUND", "Category", request.CategoryId);
 
+        if (category.IsDisabled)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot assign product to a disabled category.");
+        }
+
         var hasChildren = await _dbContext.Categories
             .AsNoTracking()
             .AnyAsync(c => c.ParentId == request.CategoryId && !c.IsDeleted, cancellationToken);
@@ -294,6 +307,7 @@ public sealed class ProductService : IProductService
         _dbContext.Products.Add(product);
 
         var isAuction = request.SaleType == SaleType.Auction;
+        var variantsToDeclare = new List<(ProductVariant Variant, int Quantity)>();
 
         if (isAuction)
         {
@@ -384,6 +398,11 @@ public sealed class ProductService : IProductService
                     throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Price must be greater than 0 for all regular product variants.");
                 }
 
+                if (v.Quantity < 0)
+                {
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Quantity must be greater than or equal to 0.");
+                }
+
                 var variant = new ProductVariant
                 {
                     Id = Guid.NewGuid(),
@@ -417,6 +436,7 @@ public sealed class ProductService : IProductService
                 }
 
                 _dbContext.ProductVariants.Add(variant);
+                variantsToDeclare.Add((variant, v.Quantity));
             }
         }
 
@@ -427,10 +447,41 @@ public sealed class ProductService : IProductService
             newValues: new { product.Name, product.SellerId, product.CategoryId, product.SaleType },
             userId: request.SellerId.ToString());
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        using (var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken))
+        {
+            try
+            {
+                await _dbContext.SaveChangesAsync(cancellationToken);
 
-        // NOTE: Draft products DO NOT initialize warehouse inventory.
-        // Inventory is initialized upon product activation (DRAFT -> ACTIVE).
+                // Initialize physical warehouse inventory for Regular products (Hard-fail)
+                if (!isAuction && variantsToDeclare.Count > 0)
+                {
+                    foreach (var (variant, qty) in variantsToDeclare)
+                    {
+                        var invResult = await _fulfillmentClient.InitializeInventoryForSkuAsync(
+                            variant.Id,
+                            product.SellerId,
+                            qty,
+                            cancellationToken);
+
+                        if (invResult == null)
+                        {
+                            throw new DomainException(
+                                "FULFILLMENT_UNAVAILABLE",
+                                $"Cannot initialize inventory for SKU '{variant.SkuCode}'. Fulfillment service is unavailable or returned an error.",
+                                502);
+                        }
+                    }
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
 
         return new ProductDto(
             product.Id,
@@ -469,6 +520,11 @@ public sealed class ProductService : IProductService
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == request.CategoryId && !c.IsDeleted, cancellationToken)
             ?? throw new EntityNotFoundException("CATEGORY_NOT_FOUND", "Category", request.CategoryId);
+
+        if (category.IsDisabled)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot assign product to a disabled category.");
+        }
 
         var hasChildren = await _dbContext.Categories
             .AsNoTracking()
@@ -576,13 +632,23 @@ public sealed class ProductService : IProductService
 
         if (request.CategoryId.HasValue && request.CategoryId.Value != Guid.Empty && request.CategoryId.Value != product.CategoryId)
         {
-            var categoryExists = await _dbContext.Categories
+            var category = await _dbContext.Categories
                 .AsNoTracking()
-                .AnyAsync(c => c.Id == request.CategoryId.Value && !c.IsDeleted, cancellationToken);
+                .FirstOrDefaultAsync(c => c.Id == request.CategoryId.Value && !c.IsDeleted, cancellationToken)
+                ?? throw new EntityNotFoundException("CATEGORY_NOT_FOUND", "Category", request.CategoryId.Value);
 
-            if (!categoryExists)
+            if (category.IsDisabled)
             {
-                throw new EntityNotFoundException("CATEGORY_NOT_FOUND", "Category", request.CategoryId.Value);
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot assign product to a disabled category.");
+            }
+
+            var hasChildren = await _dbContext.Categories
+                .AsNoTracking()
+                .AnyAsync(c => c.ParentId == request.CategoryId.Value && !c.IsDeleted, cancellationToken);
+
+            if (hasChildren)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Products can only be assigned to a leaf category.");
             }
 
             product.CategoryId = request.CategoryId.Value;
@@ -716,7 +782,8 @@ public sealed class ProductService : IProductService
                     await _fulfillmentClient.InitializeInventoryForSkuAsync(
                         variant.Id,
                         product.SellerId,
-                        cancellationToken);
+                        initialQuantity: 0,
+                        cancellationToken: cancellationToken);
                 }
                 catch
                 {
@@ -835,17 +902,42 @@ public sealed class ProductService : IProductService
             }
         }
 
-        var currentImageCount = await _dbContext.ProductImages
+        var totalProductImageCount = await _dbContext.ProductImages
             .CountAsync(i => i.ProductId == productId && !i.IsDeleted, cancellationToken);
 
-        if (currentImageCount >= 5)
+        if (totalProductImageCount >= 15)
         {
-            throw new BusinessRuleValidationException("VAL_LIMIT_EXCEEDED", "A product cannot have more than 5 images.");
+            throw new BusinessRuleValidationException("VAL_LIMIT_EXCEEDED", "Total images for a product and its variants cannot exceed 15.");
         }
 
-        var uploadResult = await _imageStorageService.UploadAsync(fileStream, fileName, "products", cancellationToken);
+        bool isFirstImage;
+        if (variantId.HasValue && variantId.Value != Guid.Empty)
+        {
+            var variantImageCount = await _dbContext.ProductImages
+                .CountAsync(i => i.VariantId == variantId.Value && !i.IsDeleted, cancellationToken);
 
-        var isFirstImage = currentImageCount == 0;
+            if (variantImageCount >= 3)
+            {
+                throw new BusinessRuleValidationException("VAL_LIMIT_EXCEEDED", "A variant cannot have more than 3 images.");
+            }
+
+            isFirstImage = (variantImageCount == 0);
+        }
+        else
+        {
+            var generalImageCount = await _dbContext.ProductImages
+                .CountAsync(i => i.ProductId == productId && i.VariantId == null && !i.IsDeleted, cancellationToken);
+
+            if (generalImageCount >= 5)
+            {
+                throw new BusinessRuleValidationException("VAL_LIMIT_EXCEEDED", "A product cannot have more than 5 general images.");
+            }
+
+            isFirstImage = (generalImageCount == 0);
+        }
+
+        var uploadFolder = variantId.HasValue ? "products/variants" : "products";
+        var uploadResult = await _imageStorageService.UploadAsync(fileStream, fileName, uploadFolder, cancellationToken);
         var image = new ProductImage
         {
             Id = Guid.NewGuid(),
@@ -902,6 +994,14 @@ public sealed class ProductService : IProductService
         if (image.Product == null || image.Product.SellerId != currentUserId)
         {
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to delete this image.", 403);
+        }
+
+        var remainingImagesCount = await _dbContext.ProductImages
+            .CountAsync(i => i.ProductId == image.ProductId && i.Id != imageId && !i.IsDeleted, cancellationToken);
+
+        if (image.Product.Status == ProductStatus.Active && remainingImagesCount == 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot delete the only image of an active product. Deactivate the product first or upload another image.");
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -992,13 +1092,42 @@ public sealed class ProductService : IProductService
     {
         var variant = await _dbContext.ProductVariants
             .AsNoTracking()
+            .Include(v => v.Product)
+                .ThenInclude(p => p!.Images)
+            .Include(v => v.Images)
             .Include(v => v.Attributes)
             .FirstOrDefaultAsync(v => v.Id == variantId && !v.IsDeleted, cancellationToken)
             ?? throw new EntityNotFoundException("VARIANT_NOT_FOUND", "ProductVariant", variantId);
 
+        var isPurchasable = !variant.IsDeleted &&
+            variant.Status == VariantStatus.Active &&
+            variant.Product != null &&
+            !variant.Product.IsDeleted &&
+            variant.Product.Status == ProductStatus.Active &&
+            (variant.Product.SaleType != SaleType.Regular || (variant.Price.HasValue && variant.Price.Value > 0));
+
+        var vImages = variant.Images
+            .Where(i => !i.IsDeleted)
+            .OrderBy(i => i.SortOrder)
+            .Select(i => new ProductImageDto(
+                i.Id,
+                i.ProductId,
+                i.VariantId,
+                i.Url.Contains("nexus.local") ? DefaultImageUrl : i.Url,
+                i.AltText,
+                i.IsActive,
+                i.SortOrder))
+            .ToList();
+
+        var primaryImageUrl = vImages.FirstOrDefault(i => i.IsActive)?.Url
+            ?? variant.Product?.Images.Where(i => !i.IsDeleted && i.IsActive).OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault()
+            ?? DefaultImageUrl;
+
         return new VariantDetailDto(
             variant.Id,
             variant.ProductId,
+            variant.Product?.SellerId ?? Guid.Empty,
+            variant.Product?.Name ?? string.Empty,
             variant.SkuCode,
             variant.Name,
             variant.Price,
@@ -1007,8 +1136,120 @@ public sealed class ProductService : IProductService
             variant.HasOrder,
             variant.Status.ToString(),
             variant.StatusReason?.ToString(),
-            variant.Attributes.Select(a => new ProductVariantAttributeDto(a.AttrName, a.AttrValue)).ToList()
+            isPurchasable,
+            variant.Attributes.Select(a => new ProductVariantAttributeDto(a.AttrName, a.AttrValue)).ToList(),
+            primaryImageUrl,
+            vImages
         );
+    }
+
+    public async Task<IReadOnlyList<ProductImageDto>> GetVariantImagesAsync(Guid variantId, CancellationToken cancellationToken = default)
+    {
+        var variant = await _dbContext.ProductVariants
+            .AsNoTracking()
+            .Include(v => v.Product)
+                .ThenInclude(p => p!.Images)
+            .Include(v => v.Images)
+            .FirstOrDefaultAsync(v => v.Id == variantId && !v.IsDeleted, cancellationToken)
+            ?? throw new EntityNotFoundException("VARIANT_NOT_FOUND", "ProductVariant", variantId);
+
+        var variantImages = variant.Images
+            .Where(i => !i.IsDeleted)
+            .OrderBy(i => i.SortOrder)
+            .Select(i => new ProductImageDto(
+                i.Id,
+                i.ProductId,
+                i.VariantId,
+                i.Url.Contains("nexus.local") ? DefaultImageUrl : i.Url,
+                i.AltText,
+                i.IsActive,
+                i.SortOrder))
+            .ToList();
+
+        if (variantImages.Count == 0 && variant.Product != null)
+        {
+            var fallback = variant.Product.Images
+                .Where(i => !i.IsDeleted && i.IsActive)
+                .OrderBy(i => i.SortOrder)
+                .Select(i => new ProductImageDto(
+                    i.Id,
+                    i.ProductId,
+                    null,
+                    i.Url.Contains("nexus.local") ? DefaultImageUrl : i.Url,
+                    i.AltText,
+                    i.IsActive,
+                    i.SortOrder))
+                .ToList();
+
+            return fallback;
+        }
+
+        return variantImages;
+    }
+
+    public async Task<ProductImageDto> AddVariantImageAsync(
+        Guid variantId,
+        Guid currentUserId,
+        Stream fileStream,
+        string fileName,
+        string? altText = null,
+        short sortOrder = 0,
+        CancellationToken cancellationToken = default)
+    {
+        var variant = await _dbContext.ProductVariants
+            .Include(v => v.Product)
+            .FirstOrDefaultAsync(v => v.Id == variantId && !v.IsDeleted, cancellationToken)
+            ?? throw new EntityNotFoundException("VARIANT_NOT_FOUND", "ProductVariant", variantId);
+
+        if (variant.Product == null || variant.Product.SellerId != currentUserId)
+        {
+            throw new DomainException("PERMISSION_DENIED", "You do not have permission to upload images for this variant.", 403);
+        }
+
+        var totalProductImageCount = await _dbContext.ProductImages
+            .CountAsync(i => i.ProductId == variant.ProductId && !i.IsDeleted, cancellationToken);
+
+        if (totalProductImageCount >= 15)
+        {
+            throw new BusinessRuleValidationException("VAL_LIMIT_EXCEEDED", "Total images for a product and its variants cannot exceed 15.");
+        }
+
+        var variantImageCount = await _dbContext.ProductImages
+            .CountAsync(i => i.VariantId == variantId && !i.IsDeleted, cancellationToken);
+
+        if (variantImageCount >= 3)
+        {
+            throw new BusinessRuleValidationException("VAL_LIMIT_EXCEEDED", "A variant cannot have more than 3 images.");
+        }
+
+        var uploadResult = await _imageStorageService.UploadAsync(fileStream, fileName, "products/variants", cancellationToken);
+
+        var isFirstImage = (variantImageCount == 0);
+        var image = new ProductImage
+        {
+            Id = Guid.NewGuid(),
+            ProductId = variant.ProductId,
+            VariantId = variantId,
+            Url = uploadResult.Url,
+            AltText = altText ?? variant.Name,
+            IsActive = isFirstImage,
+            SortOrder = sortOrder,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            IsDeleted = false
+        };
+
+        _dbContext.ProductImages.Add(image);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new ProductImageDto(
+            image.Id,
+            image.ProductId,
+            image.VariantId,
+            image.Url,
+            image.AltText,
+            image.IsActive,
+            image.SortOrder);
     }
 
     public async Task<VariantDetailDto> AddVariantAsync(
@@ -1060,6 +1301,11 @@ public sealed class ProductService : IProductService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Price must be greater than 0.");
         }
 
+        if (request.Quantity < 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Quantity must be greater than or equal to 0.");
+        }
+
         var now = DateTimeOffset.UtcNow;
         var hasActiveDefault = product.Variants.Any(v => !v.IsDeleted && v.IsActive);
 
@@ -1095,29 +1341,51 @@ public sealed class ProductService : IProductService
             }
         }
 
-        _dbContext.ProductVariants.Add(variant);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        // Only initialize physical inventory if the parent product is already ACTIVE and is a Regular product.
-        // If the product is still in DRAFT, inventory will be batch-initialized upon product activation.
-        if (product.SaleType == SaleType.Regular && product.Status == ProductStatus.Active)
+        using (var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken))
         {
             try
             {
-                await _fulfillmentClient.InitializeInventoryForSkuAsync(
-                    variant.Id,
-                    product.SellerId,
-                    cancellationToken);
+                _dbContext.ProductVariants.Add(variant);
+                await _dbContext.SaveChangesAsync(cancellationToken);
+
+                // Initialize physical inventory for Regular products (Hard-fail)
+                if (product.SaleType == SaleType.Regular)
+                {
+                    var invResult = await _fulfillmentClient.InitializeInventoryForSkuAsync(
+                        variant.Id,
+                        product.SellerId,
+                        request.Quantity,
+                        cancellationToken);
+
+                    if (invResult == null)
+                    {
+                        throw new DomainException(
+                            "FULFILLMENT_UNAVAILABLE",
+                            $"Cannot initialize inventory for SKU '{variant.SkuCode}'. Fulfillment service is unavailable or returned an error.",
+                            502);
+                    }
+                }
+
+                await transaction.CommitAsync(cancellationToken);
             }
             catch
             {
-                // Non-blocking fulfillment notification
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
             }
         }
+
+        var isPurchasable = !variant.IsDeleted &&
+            variant.Status == VariantStatus.Active &&
+            product.Status == ProductStatus.Active &&
+            !product.IsDeleted &&
+            (product.SaleType != SaleType.Regular || (variant.Price.HasValue && variant.Price.Value > 0));
 
         return new VariantDetailDto(
             variant.Id,
             variant.ProductId,
+            product.SellerId,
+            product.Name,
             variant.SkuCode,
             variant.Name,
             variant.Price,
@@ -1126,6 +1394,7 @@ public sealed class ProductService : IProductService
             variant.HasOrder,
             variant.Status.ToString(),
             variant.StatusReason?.ToString(),
+            isPurchasable,
             variant.Attributes.Select(a => new ProductVariantAttributeDto(a.AttrName, a.AttrValue)).ToList()
         );
     }
@@ -1187,9 +1456,18 @@ public sealed class ProductService : IProductService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        var isPurchasable = !variant.IsDeleted &&
+            variant.Status == VariantStatus.Active &&
+            variant.Product != null &&
+            !variant.Product.IsDeleted &&
+            variant.Product.Status == ProductStatus.Active &&
+            (variant.Product.SaleType != SaleType.Regular || (variant.Price.HasValue && variant.Price.Value > 0));
+
         return new VariantDetailDto(
             variant.Id,
             variant.ProductId,
+            variant.Product?.SellerId ?? Guid.Empty,
+            variant.Product?.Name ?? string.Empty,
             variant.SkuCode,
             variant.Name,
             variant.Price,
@@ -1198,6 +1476,7 @@ public sealed class ProductService : IProductService
             variant.HasOrder,
             variant.Status.ToString(),
             variant.StatusReason?.ToString(),
+            isPurchasable,
             variant.Attributes.Select(a => new ProductVariantAttributeDto(a.AttrName, a.AttrValue)).ToList()
         );
     }
@@ -1257,9 +1536,18 @@ public sealed class ProductService : IProductService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        var isPurchasable = !variant.IsDeleted &&
+            variant.Status == VariantStatus.Active &&
+            variant.Product != null &&
+            !variant.Product.IsDeleted &&
+            variant.Product.Status == ProductStatus.Active &&
+            (variant.Product.SaleType != SaleType.Regular || (variant.Price.HasValue && variant.Price.Value > 0));
+
         return new VariantDetailDto(
             variant.Id,
             variant.ProductId,
+            variant.Product?.SellerId ?? Guid.Empty,
+            variant.Product?.Name ?? string.Empty,
             variant.SkuCode,
             variant.Name,
             variant.Price,
@@ -1268,6 +1556,7 @@ public sealed class ProductService : IProductService
             variant.HasOrder,
             variant.Status.ToString(),
             variant.StatusReason?.ToString(),
+            isPurchasable,
             variant.Attributes.Select(a => new ProductVariantAttributeDto(a.AttrName, a.AttrValue)).ToList()
         );
     }
@@ -1604,6 +1893,13 @@ public sealed class ProductService : IProductService
                 .Select(a => new ProductVariantAttributeDto(a.AttrName, a.AttrValue))
                 .ToList();
 
+            var isPurchasable = !v.IsDeleted &&
+                v.Status == VariantStatus.Active &&
+                v.Product != null &&
+                !v.Product.IsDeleted &&
+                v.Product.Status == ProductStatus.Active &&
+                (v.Product.SaleType != SaleType.Regular || (v.Price.HasValue && v.Price.Value > 0));
+
             return new BatchVariantItemDto(
                 VariantId: v.Id,
                 ProductId: v.ProductId,
@@ -1617,7 +1913,8 @@ public sealed class ProductService : IProductService
                 SellerId: v.Product?.SellerId ?? Guid.Empty,
                 SaleType: v.Product?.SaleType.ToString() ?? string.Empty,
                 PrimaryImageUrl: resolvedImageUrl,
-                Attributes: attrs
+                Attributes: attrs,
+                IsPurchasable: isPurchasable
             );
         }).ToList();
 
@@ -1672,7 +1969,7 @@ public sealed class ProductService : IProductService
                 isPurchasable = false;
                 reason = "PRODUCT_NOT_ACTIVE";
             }
-            else if (v.Status != VariantStatus.Active || !v.IsActive)
+            else if (v.Status != VariantStatus.Active)
             {
                 isPurchasable = false;
                 reason = "VARIANT_NOT_ACTIVE";
@@ -1709,5 +2006,70 @@ public sealed class ProductService : IProductService
         }
 
         return new CheckVariantStatusResponse(items, notFoundIds);
+    }
+
+    public async Task<ValidateVariantSwitchResponse> ValidateVariantSwitchAsync(
+        ValidateVariantSwitchRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request == null || request.CurrentSkuId == Guid.Empty || request.NewSkuId == Guid.Empty)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Current SKU ID and new SKU ID must be provided.");
+        }
+
+        var requestedIds = new List<Guid> { request.CurrentSkuId, request.NewSkuId }.Distinct().ToList();
+
+        var variants = await _dbContext.ProductVariants
+            .AsNoTracking()
+            .Include(v => v.Product)
+            .Where(v => requestedIds.Contains(v.Id))
+            .ToListAsync(cancellationToken);
+
+        var currentVariant = variants.FirstOrDefault(v => v.Id == request.CurrentSkuId);
+        if (currentVariant == null || currentVariant.IsDeleted)
+        {
+            throw new EntityNotFoundException("CATALOG_SKU_NOT_FOUND", "ProductVariant", request.CurrentSkuId);
+        }
+
+        var newVariant = variants.FirstOrDefault(v => v.Id == request.NewSkuId);
+        if (newVariant == null || newVariant.IsDeleted)
+        {
+            throw new EntityNotFoundException("CATALOG_SKU_NOT_FOUND", "ProductVariant", request.NewSkuId);
+        }
+
+        if (currentVariant.ProductId != newVariant.ProductId)
+        {
+            throw new BusinessRuleValidationException("CATALOG_VARIANT_MISMATCH", "New SKU does not belong to the same parent product.", 400);
+        }
+
+        var product = newVariant.Product;
+        var isPurchasable = true;
+
+        if (product == null || product.IsDeleted || product.Status != ProductStatus.Active)
+        {
+            isPurchasable = false;
+        }
+        else if (newVariant.Status != VariantStatus.Active)
+        {
+            isPurchasable = false;
+        }
+        else if (product.SaleType == SaleType.Regular && (!newVariant.Price.HasValue || newVariant.Price.Value <= 0))
+        {
+            isPurchasable = false;
+        }
+
+        var unitPrice = newVariant.Price ?? 0m;
+        var sellerId = product?.SellerId ?? Guid.Empty;
+
+        return new ValidateVariantSwitchResponse(
+            IsValid: true,
+            ProductId: currentVariant.ProductId,
+            SellerId: sellerId,
+            NewSkuId: newVariant.Id,
+            NewSkuName: newVariant.Name,
+            NewUnitPrice: unitPrice,
+            IsPurchasable: isPurchasable,
+            WeightGrams: 200
+        );
     }
 }

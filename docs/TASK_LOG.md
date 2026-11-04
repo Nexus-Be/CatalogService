@@ -418,3 +418,125 @@
   - `DependencyInjection.cs`: Bổ sung nạp key `Fulfillment:BaseUrl` từ `appsettings.json`.
   - `ProductService.cs`: Chuyển đổi các vị trí kích hoạt sản phẩm/biến thể sang gọi `_fulfillmentClient.InitializeInventoryForSkuAsync(variant.Id, product.SellerId, cancellationToken)`.
 - **Kiểm chứng:** `dotnet build Catalog.sln -c Release` thành công 100% với 0 Warning(s), 0 Error(s).
+
+
+### 37. Hoàn thiện API Xác thực Đổi Phân loại Hàng trong Giỏ (CAT-47 - Variant Switch Validation)
+- **Mục đích:** Đáp ứng yêu cầu mục 2.3 từ phía CommerceService trong hợp đồng tích hợp. Chống gian lận khi khách hàng đổi phân loại hàng trực tiếp trong giỏ (PATCH /api/v1/carts/me/items/{cartItemId}/variant), đảm bảo 2 biến thể phải thuộc cùng một sản phẩm cha (ProductId) và cùng Người bán (SellerId), đồng thời cung cấp đơn giá tươi mới nhất và kiểm tra điều kiện mở bán (isPurchasable).
+- **Đường dẫn hỗ trợ:**
+  - Route chính (theo hợp đồng Commerce): POST /api/v1/internal/catalog/skus/validate-variant-switch
+  - Route alias (chuẩn nội bộ Catalog): POST /api/v1/internal/variants/validate-switch
+- **Tầng Application (ProductRequests.cs, ProductDtos.cs, IProductService.cs, ProductService.cs):**
+  - Khai báo DTO: ValidateVariantSwitchRequest(Guid CurrentSkuId, Guid NewSkuId)
+  - Khai báo DTO: ValidateVariantSwitchResponse(bool IsValid, Guid ProductId, Guid SellerId, Guid NewSkuId, string NewSkuName, decimal NewUnitPrice, bool IsPurchasable, int WeightGrams = 200)
+  - Triển khai ValidateVariantSwitchAsync:
+    - Kiểm tra GUID hợp lệ (khác Guid.Empty), ném VAL_INVALID_INPUT (400 Bad Request).
+    - Truy vấn CSDL ProductVariants kèm Product qua AsNoTracking().
+    - Kiểm tra tồn tại và xóa mềm: Nếu không tồn tại hoặc đã bị xóa mềm, trả CATALOG_SKU_NOT_FOUND (404 Not Found).
+    - Kiểm tra currentVariant.ProductId == newVariant.ProductId. Nếu khác sản phẩm, trả CATALOG_VARIANT_MISMATCH (400 Bad Request).
+    - Tính toán isPurchasable của biến thể mới: Bắt buộc sản phẩm cha Active, biến thể Active, không bị xóa mềm, và có giá bán > 0 (với Regular). Không kiểm tra cờ IsActive (cờ này chỉ đánh dấu variant mặc định).
+    - Trả về isValid: true, 
+ewUnitPrice, isPurchasable, weightGrams: 200.
+  - Tinh chỉnh CheckVariantStatusBatchAsync: Bỏ điều kiện || !v.IsActive để các biến thể phụ còn hàng không bị đánh dấu nhầm thành unpurchasable.
+- **Tầng API Controller (InternalVariantsController.cs):**
+  - Action ValidateVariantSwitch hỗ trợ cả 2 route POST /api/v1/internal/catalog/skus/validate-variant-switch và POST /api/v1/internal/variants/validate-switch.
+- **Kiểm chứng thực tế trên server port 8002:**
+  - Case 1: Đổi variant cùng sản phẩm (Laptop) ➔ 200 OK, isValid: true, isPurchasable: true.
+  - Case 2: Đổi variant khác sản phẩm (Laptop sang Smartphone) ➔ 400 Bad Request, errorCode: "CATALOG_VARIANT_MISMATCH".
+  - Case 3: Variant không tồn tại ➔ 404 Not Found, errorCode: "CATALOG_SKU_NOT_FOUND".
+  - Case 4: GUID rỗng ➔ 400 Bad Request, errorCode: "VAL_INVALID_INPUT".
+  - Build solution:   Warning(s), 0 Error(s).
+
+### 38. Bổ sung sellerId, productName, isPurchasable và Route Alias SKU cho Commerce (CAT-21, CAT-24)
+- **Mục đích:** Đáp ứng 100% các đề xuất từ Team Commerce:
+  1. Thêm sellerId, productName, và isPurchasable: boolean vào Single Variant API để hiển thị chi tiết khi khách nhặt hàng vào giỏ.
+  2. Bổ sung cờ isPurchasable: boolean trực tiếp vào Batch Variant API để triệt tiêu Network Latency x 2 khi xem giỏ và checkout.
+  3. Mở các route alias khớp 100% với hợp đồng Commerce:
+     - GET /api/v1/internal/catalog/skus/{id} (và GET /api/v1/internal/variants/{id})
+     - POST /api/v1/internal/catalog/skus:batch-get (alias cho POST /api/v1/internal/variants)
+- **Tầng Application (ProductDtos.cs & ProductService.cs):**
+  - Mở rộng VariantDetailDto: Thêm Guid SellerId, string ProductName, ool IsPurchasable.
+  - Mở rộng BatchVariantItemDto: Thêm ool IsPurchasable.
+  - Cập nhật mapping tại: GetVariantByIdAsync (.Include Product), AddVariantAsync, UpdateVariantAsync, ChangeVariantStatusAsync, GetVariantsBatchAsync.
+- **Tầng API Controller (InternalVariantsController.cs):**
+  - Bổ sung action GetVariantById với route GET /api/v1/internal/variants/{id} và GET /api/v1/internal/catalog/skus/{id}.
+  - Thêm route alias POST /api/v1/internal/catalog/skus:batch-get cho action GetVariantsBatch.
+- **Kiểm chứng thực tế trên port 8002:**
+  - GET /api/v1/internal/catalog/skus/5fe253bc-97ea-4cbc-960a-33f13be6730e ➔ Trả về 200 OK đầy đủ sellerId, productName, isPurchasable: true.
+  - POST /api/v1/internal/catalog/skus:batch-get ➔ Trả về 200 OK mảng items có isPurchasable: true.
+  - Build solution:   Warning(s), 0 Error(s).
+
+### 39. Hoàn thiện Quản lý Ảnh riêng cho Biến thể (Variant Images) & Ràng buộc Số lượng Ảnh
+- **Mục đích:** Khắc phục triệt để tình trạng thiếu API ảnh riêng cho Variant, bổ sung ảnh vào chi tiết biến thể và siết chặt quy chuẩn số lượng ảnh trong hệ sinh thái Catalog.
+- **Tầng Application (ProductDtos.cs, IProductService.cs, ProductService.cs):**
+  - Mở rộng VariantDetailDto và ProductDetailVariantDto: Bổ sung string? PrimaryImageUrl và IReadOnlyList<ProductImageDto> Images.
+  - Khai báo và cài đặt GetVariantImagesAsync: Lấy ảnh riêng của variant, tự động fallback ảnh chính của product nếu variant chưa có ảnh riêng.
+  - Khai báo và cài đặt AddVariantImageAsync: Upload trực tiếp ảnh cho variant, kiểm tra quyền sở hữu Seller, tự động upload Cloudinary vào folder products/variants, lưu DB với VariantId.
+  - Nâng cấp và siết chặt toàn diện Validation số lượng ảnh trong AddProductImageAsync và AddVariantImageAsync:
+    - Ảnh chung Product: Tối đa 5 ảnh (VAL_LIMIT_EXCEEDED, "A product cannot have more than 5 general images.").
+    - Ảnh riêng Variant: Tối đa 3 ảnh (VAL_LIMIT_EXCEEDED, "A variant cannot have more than 3 images.").
+    - Tổng số ảnh toàn bộ sản phẩm: Tối đa 15 ảnh (VAL_LIMIT_EXCEEDED, "Total images for a product and its variants cannot exceed 15.").
+    - Giới hạn dung lượng: Tối đa 5MB.
+    - Định dạng: .jpg, .jpeg, .png, .webp.
+- **Tầng API Controller (VariantsController.cs):**
+  - GET /api/v1/variants/{id}/images: Lấy ảnh riêng của biến thể kèm fallback.
+  - POST /api/v1/variants/{id}/images: Upload trực tiếp ảnh cho biến thể (hỗ trợ multipart/form-data).
+  - DELETE /api/v1/variants/{id}/images/{imageId}: Xóa ảnh của biến thể.
+- **Kiểm chứng thực tế trên port 8002:**
+  - POST /api/v1/variants/{id}/images: Upload thành công ảnh lên Cloudinary (201 Created).
+  - GET /api/v1/variants/{id}: Trả về đầy đủ primaryImageUrl và mảng images của variant.
+  - GET /api/v1/products/{id}: Từng variant trong mảng ariants hiển thị đúng ảnh riêng và fallback.
+  - Upload ảnh thứ 4 cho 1 variant: Bị chặn thành công với HTTP 400 Bad Request, errorCode: "VAL_LIMIT_EXCEEDED".
+  - DELETE /api/v1/variants/{id}/images/{imageId}: Xóa ảnh thành công trả về 204 No Content.
+  - Build solution:   Warning(s), 0 Error(s).
+
+
+### 40. Rà soát Nghiệp vụ Xóa Category, Chặn Xóa Ảnh Duy Nhất Sản Phẩm Active & Thêm API Category cho Admin/Staff
+- **Mục đích:** Đảm bảo toàn vẹn dữ liệu quan hệ Category - Product, đồng bộ nghiệp vụ ảnh với giao diện Frontend sàn giao dịch, và cho phép quản trị viên xem/phục hồi danh mục bị ẩn.
+- **Tầng Application:**
+  - `CategoryDtos.cs`:
+    - Bổ sung `bool IsDisabled = false` và getter property `public bool IsActive => !IsDisabled;` vào `CategoryItemDto` và `CategoryDto`. Cung cấp đầy đủ cả `isDisabled` lẫn `isActive` khi serialize JSON.
+  - `CategoryRequests.cs`:
+    - Mở rộng `CategoryListQuery` thêm cờ `bool IncludeDisabled = false`.
+  - `CategoryService.cs`:
+    - `GetCategoriesAsync`: Tôn trọng cờ `IncludeDisabled`. Nếu `false` (mặc định public user), lọc `!c.IsDisabled`. Nếu `true` (admin/staff), không lọc loại bỏ danh mục ẩn cả ở danh mục gốc và cây danh mục con.
+    - `DeleteAsync`: Chuẩn hóa nghiệp vụ và thông báo lỗi. Kiểm tra danh mục con (`CATEGORY_HAS_CHILDREN`, "Cannot delete a category that contains child categories. Please delete or reassign child categories first.") và sản phẩm liên kết (`CATEGORY_HAS_PRODUCTS`, "Cannot delete a category that contains products. Please reassign or delete associated products first.").
+  - `ProductService.cs`:
+    - `DeleteImageByIdAsync`: Bổ sung kiểm tra số lượng ảnh còn lại của sản phẩm (`remainingImagesCount`). Nếu sản phẩm có trạng thái `ProductStatus.Active` và số lượng ảnh còn lại bằng 0, ném lỗi 400 Bad Request (`VAL_INVALID_INPUT`, "Cannot delete the only image of an active product. Deactivate the product first or upload another image.").
+- **Tầng API Controller (`CategoriesController.cs`):**
+  - Cập nhật action `GET /api/v1/categories`: Bổ sung `[FromQuery] bool? includeDisabled = null`. Tự động nhận diện role caller (`admin`/`staff`). Nếu non-admin cố tình gửi `includeDisabled=true`, trả về `403 Forbidden` (`PERMISSION_DENIED`, "Only administrator or staff can view disabled categories.").
+  - Bổ sung endpoint chuyên dụng `GET /api/v1/categories/admin` với attribute `[RequireRole("admin", "staff")]`, mặc định `includeDisabled = true`.
+- **Kiểm chứng thực tế trên port 8002:**
+  - `GET /api/v1/categories`: Trả về 200 OK với `isDisabled: false` và `isActive: true`.
+  - `GET /api/v1/categories?includeDisabled=true` không có quyền: Trả về 403 Forbidden (`PERMISSION_DENIED`).
+  - `GET /api/v1/categories?includeDisabled=true` với role admin: Trả về 200 OK đầy đủ danh mục.
+  - `GET /api/v1/categories/admin` với role staff: Trả về 200 OK đầy đủ danh mục.
+  - `DELETE /api/v1/categories/{id}` có sản phẩm: Bị chặn thành công với HTTP 400 (`CATEGORY_HAS_PRODUCTS`).
+  - `DELETE /api/v1/products/{id}/images/{imageId}` ảnh duy nhất của sản phẩm Active: Bị chặn thành công với HTTP 400 (`VAL_INVALID_INPUT`, "Cannot delete the only image of an active product. Deactivate the product first or upload another image.").
+  - `DELETE /api/v1/products/{id}/images/{imageId}` khi sản phẩm có nhiều ảnh: Xóa thành công, trả về 204 No Content.
+  - `dotnet build Catalog.sln -c Release`: 0 Warning(s), 0 Error(s).
+
+
+### 41. Bổ sung SellerId vào Response Danh sách và Tìm kiếm Sản phẩm (ProductListItemDto)
+- **Mục đích:** Cung cấp thông tin định danh người bán (`sellerId`) ngay tại danh sách sản phẩm (`GET /api/v1/products` và `GET /api/v1/products/search`), phục vụ Frontend hiển thị tên Shop và hỗ trợ Commerce Service phân nhóm sản phẩm theo người bán.
+- **Tầng Application:**
+  - `ProductDtos.cs`: Thêm `Guid SellerId` vào `ProductListItemDto`.
+  - `ProductService.cs`: Bổ sung `p.SellerId` vào câu truy vấn projection EF Core và gán `r.SellerId` khi khởi tạo `ProductListItemDto` trong hàm `SearchAsync`.
+- **Kiểm chứng thực tế trên port 8002:**
+  - `GET /api/v1/products?pageSize=2`: Trả về 200 OK với `sellerId: "cccccccc-3333-3333-3333-333333333333"` trong từng item.
+  - `GET /api/v1/products/search?keyword=laptop`: Trả về 200 OK với `sellerId` đầy đủ.
+  - `dotnet build Catalog.sln -c Release`: 0 Warning(s), 0 Error(s).
+
+
+### 42. Giới hạn Quyền Quản lý Ảnh Biến thể Duy nhất cho Role Seller
+- **Mục đích:** Đảm bảo chỉ người bán sở hữu gian hàng mới có quyền upload và xóa ảnh biến thể, ngăn chặn tài khoản Admin thao tác trực tiếp nếu không phải là người bán sở hữu SKU.
+- **Tầng API Controller (`VariantsController.cs`):**
+  - Cập nhật attribute của 2 action:
+    - `POST /api/v1/variants/{id}/images`: Đổi `[RequireRole("seller", "admin")]` $\rightarrow$ `[RequireRole("seller")]`.
+    - `DELETE /api/v1/variants/{id}/images/{imageId}`: Đổi `[RequireRole("seller", "admin")]` $\rightarrow$ `[RequireRole("seller")]`.
+- **Tầng Filter (`RequireRoleAttribute.cs`):**
+  - Tinh chỉnh logic kiểm tra quyền khớp chính xác danh sách role được chỉ định trong attribute, không tự động bypass cho Admin nếu attribute không khai báo cho phép Admin.
+- **Kiểm chứng thực tế trên port 8002:**
+  - `POST /api/v1/variants/{id}/images` với role `admin`: Trả về `403 Forbidden` (`FORBIDDEN`, `"Access denied. Required roles: [seller]."`).
+  - `DELETE /api/v1/variants/{id}/images/{imageId}` với role `admin`: Trả về `403 Forbidden` (`FORBIDDEN`, `"Access denied. Required roles: [seller]."`).
+  - Gọi với role `seller`: Vượt qua tầng Authorization filter thành công.
+  - `dotnet build Catalog.sln -c Release`: 0 Warning(s), 0 Error(s).

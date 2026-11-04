@@ -26,6 +26,7 @@ public class CategoriesController : ControllerBase
     /// <summary>Lists categories with pagination and sorting. Supports tree hierarchy or flat list with search.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(PagedData<CategoryItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> List(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
@@ -34,10 +35,43 @@ public class CategoriesController : ControllerBase
         [FromQuery] Guid? parentId = null,
         [FromQuery] bool tree = false,
         [FromQuery] string? keyword = null,
+        [FromQuery] bool? includeDisabled = null,
+        CancellationToken ct = default)
+    {
+        var isAdminOrStaff = this.HasRole("admin") || this.HasRole("staff") || this.HasRole("administrator");
+
+        if (includeDisabled == true && !isAdminOrStaff)
+        {
+            return this.ErrorResult(StatusCodes.Status403Forbidden, "PERMISSION_DENIED", "Only administrator or staff can view disabled categories.");
+        }
+
+        var shouldIncludeDisabled = includeDisabled ?? isAdminOrStaff;
+
+        var categories = await _categoryService.GetCategoriesAsync(
+            new CategoryListQuery(page, pageSize, sortBy, sortDirection, parentId, tree, keyword, shouldIncludeDisabled),
+            ct);
+        return Ok(categories);
+    }
+
+    /// <summary>Lists all categories including disabled ones. Requires admin or staff role.</summary>
+    [HttpGet("admin")]
+    [RequireRole("admin", "staff")]
+    [ProducesResponseType(typeof(PagedData<CategoryItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> ListAdmin(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? sortBy = "sortOrder",
+        [FromQuery] string? sortDirection = "asc",
+        [FromQuery] Guid? parentId = null,
+        [FromQuery] bool tree = false,
+        [FromQuery] string? keyword = null,
+        [FromQuery] bool includeDisabled = true,
         CancellationToken ct = default)
     {
         var categories = await _categoryService.GetCategoriesAsync(
-            new CategoryListQuery(page, pageSize, sortBy, sortDirection, parentId, tree, keyword),
+            new CategoryListQuery(page, pageSize, sortBy, sortDirection, parentId, tree, keyword, includeDisabled),
             ct);
         return Ok(categories);
     }
