@@ -34,6 +34,9 @@ public static class DependencyInjection
         // Image Storage
         services.AddSingleton<IImageStorageService, CloudinaryStorageService>();
 
+        // Identity propagation delegating handler for outgoing inter-service HTTP requests
+        services.AddTransient<Services.Common.IdentityPropagationHandler>();
+
         // Internal Fulfillment Client
         var fulfillmentBaseUrl = Environment.GetEnvironmentVariable("FULFILLMENT_SERVICE_URL")
             ?? configuration["FULFILLMENT_SERVICE_URL"]
@@ -48,7 +51,7 @@ public static class DependencyInjection
         {
             client.BaseAddress = new Uri(fulfillmentBaseUrl.TrimEnd('/') + "/");
             client.Timeout = TimeSpan.FromSeconds(10);
-        });
+        }).AddHttpMessageHandler<Services.Common.IdentityPropagationHandler>();
 
         return services;
     }
