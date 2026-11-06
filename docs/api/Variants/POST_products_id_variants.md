@@ -14,7 +14,10 @@
 - **Quy tắc Sở hữu (Resource Ownership):** Bắt buộc sản phẩm mục tiêu phải thuộc quyền sở hữu của người bán (`product.SellerId == currentUserId`). Admin được quyền can thiệp.
 - **Controller:** `Catalog.Api/Controllers/Public/ProductsController.cs`
 - **Application Contract:** `Catalog.Application/Services/Product/IProductService.cs`
-- **Tương tác Liên Service:** Gọi `IFulfillmentClient.InitializeInventoryAsync` để khởi tạo kho vật lý cho biến thể mới nếu sản phẩm cha đã ở trạng thái `ACTIVE` (đối với sản phẩm Regular). Nếu sản phẩm cha đang là `DRAFT` hoặc `Auction`, hệ thống không gọi tạo kho.
+- **Tương tác Liên Service:** Nếu sản phẩm cha đang ở trạng thái `ACTIVE` (đối với hàng `SaleType.Regular`), hệ thống gọi `IFulfillmentClient.InitializeInventoryForSkuAsync` với số lượng mặc định là `0` (`initialQuantity: 0`) trong transaction. Quy trình gồm 2 chặng:
+  1. *Chặng 1 (Xác định kho):* Gọi `GET /api/v1/warehouses/seller/{sellerId}` sang Fulfillment Service để lấy `warehouseId` của kho active thuộc về Seller (nếu seller chưa có kho riêng, fallback lấy kho tổng Platform qua `GET /api/v1/warehouses`).
+  2. *Chặng 2 (Khởi tạo SKU tại kho):* Gọi `POST /api/v1/inventories/initialize` với `skuId`, `warehouseId` đã xác định và `initialQuantity = 0`.
+  Nếu Fulfillment service lỗi hoặc không phản hồi, hệ thống rollback và trả về `502 Bad Gateway` (`FULFILLMENT_UNAVAILABLE`). Nếu sản phẩm cha đang là `DRAFT` hoặc `Auction`, hệ thống **không gọi tạo kho**, chỉ lưu biến thể thuần túy vào Catalog DB.
 
 ---
 
@@ -100,6 +103,7 @@ public sealed record CreateVariantRequest(
 | `403 Forbidden` | `FORBIDDEN` | `You do not have permission to modify this product.` | Không sở hữu sản phẩm này |
 | `404 Not Found` | `PRODUCT_NOT_FOUND` | `Product not found with the specified identifier.` | Không tìm thấy sản phẩm cha |
 | `409 Conflict` | `DUPLICATE_SKU` | `SKU code already exists in the catalog.` | `skuCode` bị trùng trong Catalog DB |
+| `502 Bad Gateway` | `FULFILLMENT_UNAVAILABLE` | `Cannot initialize inventory for SKU '{skuCode}'. Fulfillment service is unavailable or returned an error.` | Sản phẩm cha đang ACTIVE nhưng gọi sang FulfillmentService thất bại |
 | `500 Internal Error` | `INTERNAL_SERVER_ERROR` | `An unexpected error occurred while processing the request.` | Lỗi không mong muốn |
 
 ---
@@ -113,7 +117,7 @@ public sealed record CreateVariantRequest(
 5. **Bước 5 (Rào chắn Bất biến):** Kiểm tra `product.SaleType != SaleType.Auction` và tổng số lượng biến thể `< 10`.
 6. **Bước 6:** Kiểm tra `skuCode` duy nhất trên toàn bảng `ProductVariants`.
 7. **Bước 7:** Khởi tạo entity `ProductVariant` và các `ProductVariantAttribute`.
-8. **Bước 8:** Gọi `IFulfillmentClient.CreateProductAsync` để đồng bộ SKU sang Fulfillment Service.
+8. **Bước 8 (Khởi tạo kho có điều kiện):** Nếu sản phẩm cha đang ở trạng thái `ACTIVE` (và là Regular), gọi `_fulfillmentClient.InitializeInventoryForSkuAsync(variant.Id, product.SellerId, initialQuantity: 0)`. Nếu Fulfillment lỗi/unavailable, rollback và ném lỗi `502 FULFILLMENT_UNAVAILABLE`. Nếu sản phẩm cha đang là `DRAFT`, bỏ qua bước gọi Fulfillment và chỉ lưu biến thể vào Catalog DB.
 9. **Bước 9:** Lưu DB và trả về `VariantDetailDto` với mã HTTP `201 Created`.
 
 ### 5.2 Checklist hoàn thành

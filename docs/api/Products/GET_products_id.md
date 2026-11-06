@@ -71,7 +71,7 @@ public sealed record ProductDetailDto(
     string? Brand,
     string SaleType,
     string Status,
-    string? Specifications,
+    IReadOnlyList<ProductSpecificationDto>? Specifications,
     DateTimeOffset? PublishedAt,
     ProductDetailCategoryDto? Category,
     IReadOnlyList<ProductDetailVariantDto> Variants,
@@ -88,7 +88,10 @@ public sealed record ProductDetailDto(
   "brand": "Nexus Tech",
   "saleType": "Regular",
   "status": "Active",
-  "specifications": "{\"switch\": \"Gateron Yellow\", \"battery\": \"4000mAh\"}",
+  "specifications": [
+    { "name": "switch", "value": "Gateron Yellow" },
+    { "name": "battery", "value": "4000mAh" }
+  ],
   "publishedAt": "2026-11-01T10:00:00Z",
   "category": {
     "categoryId": "22222222-2222-2222-2222-222222222222",

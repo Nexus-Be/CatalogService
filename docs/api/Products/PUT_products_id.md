@@ -35,7 +35,7 @@ public sealed record UpdateProductRequest(
     Guid? CategoryId = null,
     SaleType? SaleType = null,
     string? Status = null,
-    string? Specifications = null);
+    List<ProductSpecificationDto>? Specifications = null);
 ```
 - **Bảng quy chuẩn Validation:**
 | Tham số | Kiểu C# | Bắt buộc | Ràng buộc / Giới hạn | Ghi chú |
@@ -45,7 +45,7 @@ public sealed record UpdateProductRequest(
 | `brand` | `string?` | Không | Max: 100 ký tự | Thương hiệu sản phẩm |
 | `categoryId` | `Guid?` | Không | UUIDv4 format | Chuyển sản phẩm sang danh mục mới (nếu có) |
 | `saleType` | `SaleType?` | Không | `Regular`, `Auction` | Hình thức kinh doanh |
-| `specifications` | `string?` | Không | JSON string hợp lệ | Cấu hình kỹ thuật |
+| `specifications` | `List<ProductSpecificationDto>?` | Không | Tối đa 30 mục (Name <= 100, Value <= 500) | Cấu hình kỹ thuật dạng danh sách cặp { name, value } |
 
 - **JSON Request Body mẫu (camelCase):**
 ```json
@@ -54,7 +54,10 @@ public sealed record UpdateProductRequest(
   "description": "Bàn phím cơ Bluetooth 5.1 hotswap 3 modes đã nâng cấp switch và foam tiêu âm.",
   "brand": "Nexus Tech",
   "categoryId": "22222222-2222-2222-2222-222222222222",
-  "specifications": "{\"switch\": \"Gateron Yellow Pro\", \"battery\": \"5000mAh\"}"
+  "specifications": [
+    { "name": "switch", "value": "Gateron Yellow Pro" },
+    { "name": "battery", "value": "5000mAh" }
+  ]
 }
 ```
 
@@ -94,6 +97,8 @@ public sealed record ProductDto(
 | HTTP Status | Error Code | Message (Sentence case) | Điều kiện kích hoạt (Trigger Condition) |
 | :---: | :--- | :--- | :--- |
 | `400 Bad Request` | `VAL_INVALID_INPUT` | `Product name is required.` | Tên sản phẩm bị rỗng hoặc nhỏ hơn 3 ký tự |
+| `400 Bad Request` | `VAL_INVALID_INPUT` | `Specification name cannot be empty.` | Tên thông số kỹ thuật bị rỗng hoặc trắng |
+| `400 Bad Request` | `VAL_LIMIT_EXCEEDED` | `A product can have a maximum of 30 specifications.` | Danh sách `specifications` vượt quá 30 mục |
 | `401 Unauthorized` | `UNAUTHORIZED` | `Authentication is required to access this resource.` | Không có Bearer token hợp lệ |
 | `403 Forbidden` | `FORBIDDEN` | `You do not have permission to modify this product.` | `currentUserId` không trùng với `sellerId` của sản phẩm |
 | `404 Not Found` | `PRODUCT_NOT_FOUND` | `Product not found with the specified identifier.` | Không tồn tại sản phẩm hoặc sản phẩm đã bị xóa mềm |

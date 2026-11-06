@@ -21,7 +21,7 @@
 ### 2.1 Route Parameters & Query Parameters
 | Tham số | Vị trí | Kiểu C# | Bắt buộc | Ràng buộc / Giới hạn | Ghi chú |
 | :--- | :--- | :--- | :---: | :--- | :--- |
-| `keyword` | Query | `string?` | Không | Max: 100 characters | Tìm theo tên, thương hiệu, mô tả |
+| `keyword` | Query | `string?` | Không | Max: 100 characters | Tìm kiếm không phân biệt dấu tiếng Việt (`unaccent`) theo tên, thương hiệu, mô tả |
 | `categoryId` | Query | `Guid?` | Không | UUIDv4 format | Lọc theo danh mục sản phẩm |
 | `minPrice` | Query | `decimal?` | Không | Min: 0 | Giá sàn |
 | `maxPrice` | Query | `decimal?` | Không | Min: 0 | Giá trần |
@@ -97,7 +97,7 @@ public sealed record ProductListItemDto(
 ### 5.1 Các bước thực thi nghiệp vụ (Execution Flow Plan)
 1. **Bước 1:** Bắt các query parameters tại `ProductsController.Search`.
 2. **Bước 2:** Gọi `_productService.SearchAsync(query, ct)`.
-3. **Bước 3:** Truy vấn PostgreSQL bảng `Products` lọc `Status == ProductStatus.Active` và `IsDeleted == false` (`.AsNoTracking()`).
+3. **Bước 3:** Truy vấn PostgreSQL bảng `Products` lọc `Status == ProductStatus.Active` và `IsDeleted == false` (`.AsNoTracking()`). Nếu có `keyword`, áp dụng tìm kiếm không dấu `EF.Functions.Unaccent(...)` trên các cột `Name`, `Brand`, `Description`.
 4. **Bước 4:** Tính giá `MinPrice`/`MaxPrice` từ bảng `ProductVariants`, nạp `PrimaryImageUrl` từ bảng `ProductImages` (`IsActive == true`).
 5. **Bước 5:** Phân trang tại cơ sở dữ liệu qua `.Skip().Take()` và `.CountAsync()`.
 6. **Bước 6:** Trả về `Ok(pagedData)`.

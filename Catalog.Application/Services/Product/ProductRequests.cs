@@ -11,7 +11,7 @@ public sealed record CreateProductRequest(
     string? Description = null,
     string? Brand = null,
     SaleType SaleType = SaleType.Regular,
-    string? Specifications = null,
+    List<ProductSpecificationDto>? Specifications = null,
     List<CreateVariantRequest>? Variants = null);
 
 public sealed record CreateAuctionProductRequest(
@@ -20,7 +20,7 @@ public sealed record CreateAuctionProductRequest(
     string? Description = null,
     string? Brand = null,
     string? SkuCode = null,
-    string? Specifications = null,
+    List<ProductSpecificationDto>? Specifications = null,
     Guid? SellerId = null);
 
 public sealed record UpdateProductRequest(
@@ -30,7 +30,7 @@ public sealed record UpdateProductRequest(
     Guid? CategoryId = null,
     SaleType? SaleType = null,
     string? Status = null,
-    string? Specifications = null);
+    List<ProductSpecificationDto>? Specifications = null);
 
 public sealed record ChangeProductStatusRequest(
     string Status,
