@@ -188,25 +188,26 @@ public sealed class ProductService : IProductService
 
     public async Task<ProductDetailDto> GetDetailAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var product = await _dbContext.Products
+        var row = await _dbContext.Products
             .AsNoTracking()
             .Where(p => p.Id == id && !p.IsDeleted && p.Status == ProductStatus.Active)
-            .Select(p => new ProductDetailDto(
+            .Select(p => new
+            {
                 p.Id,
                 p.SellerId,
                 p.Name,
                 p.Description,
                 p.Brand,
-                p.SaleType.ToString(),
-                p.Status.ToString(),
+                SaleType = p.SaleType.ToString(),
+                Status = p.Status.ToString(),
                 p.Specifications,
                 p.PublishedAt,
-                p.Category == null ? null : new ProductDetailCategoryDto(
+                Category = p.Category == null ? null : new ProductDetailCategoryDto(
                     p.Category.Id,
                     p.Category.ParentId,
                     p.Category.Name,
                     p.Category.Level),
-                p.Variants.Where(v => !v.IsDeleted).Select(v => new ProductDetailVariantDto(
+                Variants = p.Variants.Where(v => !v.IsDeleted).Select(v => new ProductDetailVariantDto(
                     v.Id,
                     v.SkuCode,
                     v.Name,
@@ -219,7 +220,7 @@ public sealed class ProductService : IProductService
                         ?? DefaultImageUrl,
                     p.Images.Where(i => !i.IsDeleted && i.VariantId == v.Id).OrderBy(i => i.SortOrder).Select(i => new ProductImageDto(i.Id, i.ProductId, i.VariantId, i.Url, i.AltText, i.IsActive, i.SortOrder)).ToList()
                 )).ToList(),
-                p.Images.Where(i => !i.IsDeleted).OrderBy(i => i.SortOrder).Select(i => new ProductDetailImageDto(
+                Images = p.Images.Where(i => !i.IsDeleted).OrderBy(i => i.SortOrder).Select(i => new ProductDetailImageDto(
                     i.Id,
                     i.Url,
                     i.AltText,
@@ -227,15 +228,28 @@ public sealed class ProductService : IProductService
                     i.SortOrder,
                     i.VariantId
                 )).ToList(),
-                new ProductDetailRatingDto(
+                Rating = new ProductDetailRatingDto(
                     p.RatingStats != null ? p.RatingStats.AvgRating : 0,
                     p.RatingStats != null ? p.RatingStats.ReviewCount : 0
                 )
-            ))
+            })
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw new EntityNotFoundException("PRODUCT_NOT_FOUND", "Product", id);
 
-        return product;
+        return new ProductDetailDto(
+            row.Id,
+            row.SellerId,
+            row.Name,
+            row.Description,
+            row.Brand,
+            row.SaleType,
+            row.Status,
+            ProductSpecificationHelper.Deserialize(row.Specifications),
+            row.PublishedAt,
+            row.Category,
+            row.Variants,
+            row.Images,
+            row.Rating);
     }
 
     public async Task<ProductDto> CreateAsync(CreateProductRequest request, CancellationToken cancellationToken = default)
@@ -296,7 +310,7 @@ public sealed class ProductService : IProductService
             Brand = request.Brand?.Trim(),
             SaleType = request.SaleType,
             Status = ProductStatus.Draft,
-            Specifications = request.Specifications,
+            Specifications = ProductSpecificationHelper.ValidateAndSerialize(request.Specifications),
             CreatedAt = now,
             UpdatedAt = now,
             CreatedBy = request.SellerId,
@@ -546,7 +560,7 @@ public sealed class ProductService : IProductService
             Brand = request.Brand?.Trim(),
             SaleType = SaleType.Auction,
             Status = ProductStatus.Draft,
-            Specifications = request.Specifications,
+            Specifications = ProductSpecificationHelper.ValidateAndSerialize(request.Specifications),
             CreatedAt = now,
             UpdatedAt = now,
             CreatedBy = currentUserId,
@@ -677,7 +691,7 @@ public sealed class ProductService : IProductService
 
         if (request.Specifications != null)
         {
-            product.Specifications = request.Specifications;
+            product.Specifications = ProductSpecificationHelper.ValidateAndSerialize(request.Specifications);
         }
 
         product.UpdatedAt = DateTimeOffset.UtcNow;
@@ -1836,7 +1850,7 @@ public sealed class ProductService : IProductService
             product.Name,
             product.Description,
             product.Brand,
-            product.Specifications,
+            ProductSpecificationHelper.Deserialize(product.Specifications),
             product.SaleType.ToString(),
             product.Status.ToString(),
             product.StatusReason?.ToString(),

@@ -27,6 +27,8 @@
 - **Tên C# Record:** `CreateProductRequest`
 - **Khai báo C# Record:**
 ```csharp
+public sealed record ProductSpecificationDto(string Name, string Value);
+
 public sealed record CreateVariantAttributeRequest(string AttrName, string AttrValue);
 
 public sealed record CreateVariantRequest(
@@ -43,7 +45,7 @@ public sealed record CreateProductRequest(
     string? Description = null,
     string? Brand = null,
     SaleType SaleType = SaleType.Regular,
-    string? Specifications = null,
+    List<ProductSpecificationDto>? Specifications = null,
     List<CreateVariantRequest>? Variants = null);
 ```
 - **Bảng quy chuẩn Validation:**
@@ -55,7 +57,7 @@ public sealed record CreateProductRequest(
 | `description` | `string?` | Không | Max: 4000 ký tự | Mô tả chi tiết sản phẩm |
 | `brand` | `string?` | Không | Max: 100 ký tự | Thương hiệu sản xuất |
 | `saleType` | `SaleType` | Không | Mặc định: `Regular` (`0`) | Hàng thương mại cố định giá |
-| `specifications` | `string?` | Không | Chuỗi JSON hợp lệ | Thuộc tính kỹ thuật dạng JSON key-value |
+| `specifications` | `List<ProductSpecificationDto>?` | Không | Tối đa 30 mục (Name <= 100, Value <= 500) | Danh sách thông số kỹ thuật dạng cặp { name, value } |
 | `variants` | `List<CreateVariantRequest>?` | Không | Tối đa 10 SKUs ban đầu | Tùy chọn tạo kèm biến thể (quy trình Single-Step) |
 
 - **JSON Request Body mẫu (Pure DTO - camelCase):**
@@ -66,7 +68,10 @@ public sealed record CreateProductRequest(
   "description": "Bàn phím cơ Bluetooth 5.1 hotswap 3 modes kết nối độ trễ siêu thấp.",
   "brand": "Nexus Tech",
   "saleType": "Regular",
-  "specifications": "{\"switch\": \"Gateron Yellow\", \"battery\": \"4000mAh\"}",
+  "specifications": [
+    { "name": "switch", "value": "Gateron Yellow" },
+    { "name": "battery", "value": "4000mAh" }
+  ],
   "variants": [
     {
       "skuCode": "KB-NEXUS-01-WHITE",
@@ -120,6 +125,8 @@ public sealed record ProductDto(
 | :---: | :--- | :--- | :--- |
 | `400 Bad Request` | `VAL_INVALID_INPUT` | `Product name is required.` | Tên sản phẩm để trống hoặc dưới 3 ký tự |
 | `400 Bad Request` | `VAL_INVALID_INPUT` | `Category ID is required.` | `categoryId` không hợp lệ hoặc để trống |
+| `400 Bad Request` | `VAL_INVALID_INPUT` | `Specification name cannot be empty.` | Tên thông số kỹ thuật bị rỗng hoặc trắng |
+| `400 Bad Request` | `VAL_LIMIT_EXCEEDED` | `A product can have a maximum of 30 specifications.` | Danh sách `specifications` vượt quá 30 mục |
 | `401 Unauthorized` | `UNAUTHORIZED` | `Authentication is required to access this resource.` | Thiếu Access Token hoặc token hết hạn |
 | `403 Forbidden` | `FORBIDDEN` | `You cannot create products on behalf of another seller.` | Người dùng (Seller hoặc Admin) truyền `sellerId` khác với User ID của mình |
 | `404 Not Found` | `CATEGORY_NOT_FOUND` | `Category not found or is currently inactive.` | `categoryId` không tồn tại trong hệ thống |
@@ -141,8 +148,8 @@ public sealed record ProductDto(
 3. **Bước 3:** Gọi `_productService.CreateAsync(reqWithSeller, ct)`.
 4. **Bước 4:** Kiểm tra danh mục (`CategoryId`) tồn tại trong database PostgreSQL.
 5. **Bước 5:** Khởi tạo entity `Product` với `Status = ProductStatus.Draft` và lưu vào `AppDbContext`.
-6. **Bước 6 (Quy trình Hybrid Single-Step):** Nếu có mảng `Variants`, kiểm tra trùng lặp `SkuCode`, tạo các entity `ProductVariant` và gọi `IFulfillmentClient` để đồng bộ kho hàng/SKU.
-7. **Bước 7:** Commit transaction và trả về `ProductDto` với HTTP status `201 Created`.
+6. **Bước 6 (Lưu trữ biến thể không khởi tạo kho):** Nếu có mảng `Variants`, kiểm tra tính duy nhất của `SkuCode`, thêm các entity `ProductVariant` vào `AppDbContext`. Tuyệt đối **không gọi `IFulfillmentClient`** khi tạo sản phẩm ở trạng thái `DRAFT` để tránh tạo rác tồn kho. Tồn kho thực tế sẽ chỉ được khởi tạo với số lượng mặc định là `0` khi sản phẩm được kích hoạt sang `ACTIVE`.
+7. **Bước 7:** Lưu thay đổi vào cơ sở dữ liệu (`SaveChangesAsync`) và trả về `ProductDto` với HTTP status `201 Created`.
 
 ### 5.2 Checklist hoàn thành
 - [x] **Pre-Code:** Đặc tả đầy đủ hợp đồng request DTO và ma trận lỗi.

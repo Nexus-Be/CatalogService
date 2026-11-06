@@ -33,7 +33,7 @@ public sealed record CreateAuctionProductRequest(
     string? Description = null,
     string? Brand = null,
     string? SkuCode = null,
-    string? Specifications = null,
+    List<ProductSpecificationDto>? Specifications = null,
     Guid? SellerId = null);
 ```
 - **Bảng quy chuẩn Validation:**
@@ -44,7 +44,7 @@ public sealed record CreateAuctionProductRequest(
 | `description` | `string?` | Không | Max: 4000 ký tự | Mô tả chi tiết tình trạng vật phẩm |
 | `brand` | `string?` | Không | Max: 100 ký tự | Thương hiệu hoặc xuất xứ |
 | `skuCode` | `string?` | Không | Tối đa 50 ký tự | Mã SKU. Nếu để trống hệ thống tự sinh `AUC-{UUID}` |
-| `specifications` | `string?` | Không | Chuỗi JSON hợp lệ | Thuộc tính giám định, thông số kỹ thuật |
+| `specifications` | `List<ProductSpecificationDto>?` | Không | Tối đa 30 mục (Name <= 100, Value <= 500) | Thuộc tính giám định, thông số kỹ thuật dạng cặp { name, value } |
 | `sellerId` | `Guid?` | Không | UUIDv4 format | Chỉ Admin mới được chỉ định `sellerId` khác |
 
 - **JSON Request Body mẫu (camelCase):**
@@ -55,7 +55,11 @@ public sealed record CreateAuctionProductRequest(
   "description": "Hiện vật gốm sứ hoa lam men rạn nguyên bản có chứng thư giám định cổ vật.",
   "brand": "Chu Đậu",
   "skuCode": "AUC-CERAMIC-15TH-001",
-  "specifications": "{\"height\": \"32cm\", \"origin\": \"Hai Duong\", \"certificate\": \"CERT-88992\"}"
+  "specifications": [
+    { "name": "height", "value": "32cm" },
+    { "name": "origin", "value": "Hai Duong" },
+    { "name": "certificate", "value": "CERT-88992" }
+  ]
 }
 ```
 

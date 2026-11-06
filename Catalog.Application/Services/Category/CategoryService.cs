@@ -114,8 +114,9 @@ public sealed class CategoryService : ICategoryService
 
         if (!string.IsNullOrWhiteSpace(query.Keyword))
         {
-            var kw = query.Keyword.Trim().ToLower();
-            categoriesQuery = categoriesQuery.Where(c => c.Name.ToLower().Contains(kw));
+            var kw = query.Keyword.Trim();
+            var pattern = $"%{kw}%";
+            categoriesQuery = categoriesQuery.Where(c => EF.Functions.ILike(EF.Functions.Unaccent(c.Name), EF.Functions.Unaccent(pattern)));
         }
 
         if (!query.Tree)

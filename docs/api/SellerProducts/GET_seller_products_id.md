@@ -55,7 +55,7 @@ public sealed record SellerProductDetailDto(
     string Name,
     string? Description,
     string? Brand,
-    string? Specifications,
+    IReadOnlyList<ProductSpecificationDto>? Specifications,
     string SaleType,
     string Status,
     string? StatusReason,
@@ -76,7 +76,10 @@ public sealed record SellerProductDetailDto(
   "name": "Bàn Phím Cơ Không Dây Nexus RGB",
   "description": "Bàn phím cơ Bluetooth 5.1 hotswap 3 modes kết nối.",
   "brand": "Nexus Tech",
-  "specifications": "{\"switch\": \"Gateron Yellow\", \"battery\": \"4000mAh\"}",
+  "specifications": [
+    { "name": "switch", "value": "Gateron Yellow" },
+    { "name": "battery", "value": "4000mAh" }
+  ],
   "saleType": "Regular",
   "status": "Active",
   "statusReason": null,

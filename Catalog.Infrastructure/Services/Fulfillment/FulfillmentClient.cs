@@ -131,6 +131,18 @@ public sealed class FulfillmentClient : IFulfillmentClient
             }
 
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.BadRequest &&
+                !string.IsNullOrWhiteSpace(errorBody) &&
+                errorBody.Contains("already declared", StringComparison.OrdinalIgnoreCase))
+            {
+                var existingResp = await _httpClient.GetAsync($"api/v1/inventories/{request.SkuId}", cancellationToken);
+                if (existingResp.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("[REST Internal Fulfillment] SKU '{SkuId}' was already declared. Fetched existing balance.", request.SkuId);
+                    return await existingResp.Content.ReadFromJsonAsync<InventoryClientResponse>(cancellationToken: cancellationToken);
+                }
+            }
+
             _logger.LogWarning("[REST Internal Fulfillment] Failed to declare inventory for SKU '{SkuId}'. Status: {StatusCode}, Body: {Body}",
                 request.SkuId, response.StatusCode, errorBody);
             return null;

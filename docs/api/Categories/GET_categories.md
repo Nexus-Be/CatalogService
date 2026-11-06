@@ -27,7 +27,7 @@
 | `sortDirection`| Query | `string?` | Không | `asc`, `desc` (Default: `asc`) | Chiều sắp xếp tăng hoặc giảm |
 | `parentId` | Query | `Guid?` | Không | UUIDv4 format | Lọc danh mục con trực tiếp thuộc cha này |
 | `tree` | Query | `bool` | Không | Default: `false` | `true`: phân trang theo cây danh mục gốc và nhúng danh mục con |
-| `keyword` | Query | `string?` | Không | Max: 100 characters | Tìm kiếm danh mục theo từ khóa tên |
+| `keyword` | Query | `string?` | Không | Max: 100 characters | Tìm kiếm không phân biệt dấu tiếng Việt (`unaccent`) theo tên hoặc mô tả danh mục |
 
 ### 2.2 Request Body Record DTO
 - Endpoint phương thức `GET` không sử dụng Request Body.
@@ -100,7 +100,7 @@ public sealed record CategoryItemDto(
 ### 5.1 Các bước thực thi nghiệp vụ (Execution Flow Plan)
 1. **Bước 1:** `CategoriesController.List` nhận `page`, `pageSize = 10`, `sortBy`, `sortDirection`, `parentId`, `tree`, `keyword`.
 2. **Bước 2:** Gọi `_categoryService.GetCategoriesAsync(query, ct)`.
-3. **Bước 3:** Lọc danh mục chưa xóa mềm (`!IsDeleted`) và đang kích hoạt (`!IsDisabled`).
+3. **Bước 3:** Lọc danh mục chưa xóa mềm (`!IsDeleted`) và đang kích hoạt (`!IsDisabled`). Nếu có `keyword`, áp dụng tìm kiếm không dấu `EF.Functions.Unaccent(...)` trên `Name` và `Description`.
 4. **Bước 4:** Sắp xếp theo `sortBy` (`name`, `sortOrder`, `level`, `createdAt`) và hướng `sortDirection` (`asc`/`desc`).
 5. **Bước 5:** Phân trang tại database với kích thước trang chuẩn là 10.
 6. **Bước 6:** Trả về `PagedData<CategoryItemDto>` với mã HTTP `200 OK`.

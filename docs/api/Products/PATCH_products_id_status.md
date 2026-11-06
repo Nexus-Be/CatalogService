@@ -14,7 +14,10 @@
 - **Quy tắc Sở hữu (Resource Ownership):** Người bán chỉ được phép thay đổi trạng thái sản phẩm thuộc quyền sở hữu của chính mình (`product.SellerId == currentUserId`). Admin được phép can thiệp để kiểm duyệt hoặc hạ sản phẩm vi phạm.
 - **Controller:** `Catalog.Api/Controllers/Public/ProductsController.cs`
 - **Application Contract:** `Catalog.Application/Services/Product/IProductService.cs`
-- **Tương tác Liên Service:** Khi chuyển trạng thái từ `DRAFT` sang `ACTIVE` cho sản phẩm bán thường (`SaleType.Regular`), hệ thống tự động quét tất cả các biến thể Active của sản phẩm và gọi `IFulfillmentClient.InitializeInventoryAsync` để khởi tạo kho chính thức cho từng `variant.Id`. Sản phẩm đấu giá (`Auction`) không tạo kho.
+- **Tương tác Liên Service:** Khi chuyển trạng thái từ trạng thái khác sang `ACTIVE` cho sản phẩm bán thường (`SaleType.Regular`), hệ thống tự động quét tất cả các biến thể Active của sản phẩm và gọi `IFulfillmentClient.InitializeInventoryForSkuAsync` với số lượng mặc định là `0` (`initialQuantity: 0`). Quá trình này diễn ra qua 2 chặng:
+  1. *Chặng 1 (Xác định kho):* Gọi `GET /api/v1/warehouses/seller/{sellerId}` sang Fulfillment Service để lấy `warehouseId` của kho active thuộc về Seller (nếu seller chưa có kho, fallback lấy kho tổng của Platform qua `GET /api/v1/warehouses`).
+  2. *Chặng 2 (Khởi tạo SKU tại kho):* Gọi `POST /api/v1/inventories/initialize` với `skuId`, `warehouseId` đã xác định và `initialQuantity = 0`.
+  Toàn bộ quá trình chạy trong database transaction; nếu dịch vụ Fulfillment lỗi hoặc không phản hồi, hệ thống sẽ rollback và trả về mã lỗi `502 Bad Gateway` (`FULFILLMENT_UNAVAILABLE`). Sản phẩm đấu giá (`Auction`) không tạo kho.
 
 ---
 
@@ -88,6 +91,7 @@ public sealed record ProductDto(
 | `401 Unauthorized` | `UNAUTHORIZED` | `Authentication is required to access this resource.` | Không có Bearer token hợp lệ |
 | `403 Forbidden` | `FORBIDDEN` | `You do not have permission to modify this product.` | Người bán không sở hữu sản phẩm này |
 | `404 Not Found` | `PRODUCT_NOT_FOUND` | `Product not found with the specified identifier.` | Sản phẩm không tồn tại hoặc đã bị xóa mềm |
+| `502 Bad Gateway` | `FULFILLMENT_UNAVAILABLE` | `Cannot initialize inventory for SKU '{skuCode}'. Fulfillment service is unavailable or returned an error.` | Khi kích hoạt sản phẩm sang `Active` nhưng gọi sang FulfillmentService thất bại |
 | `500 Internal Error` | `INTERNAL_SERVER_ERROR` | `An unexpected error occurred while processing the request.` | Lỗi không mong muốn trong quá trình lưu dữ liệu |
 
 ### 4.1 Bảng Ánh xạ Enum liên quan
@@ -109,7 +113,14 @@ public sealed record ProductDto(
    - Kiểm tra `product.Variants.Any(v => v.IsActive && !v.IsDeleted)`. Nếu không có, ném `BusinessRuleValidationException("VAL_NO_ACTIVE_VARIANTS")`.
    - Kiểm tra `product.Images.Any(i => i.IsActive && !i.IsDeleted)`. Nếu không có, ném `BusinessRuleValidationException("VAL_NO_ACTIVE_IMAGES")`.
    - Đặt `product.PublishedAt = DateTimeOffset.UtcNow` (nếu chưa từng được publish).
-6. **Bước 6:** Cập nhật trạng thái `Status`, ghi nhận `StatusReason`, lưu DB.
+6. **Bước 6 (Khởi tạo tồn kho ban đầu trong Transaction):**
+   - Mở database transaction qua `_dbContext.Database.BeginTransactionAsync`.
+   - Cập nhật trạng thái `Status`, ghi nhận `StatusReason`, lưu DB.
+   - Nếu chuyển từ trạng thái khác sang `Active` đối với sản phẩm Regular (`oldStatus != ProductStatus.Active && newStatus == ProductStatus.Active && product.SaleType == SaleType.Regular`):
+     - Lọc danh sách `activeVariants` (`!v.IsDeleted && v.Status == VariantStatus.Active`).
+     - Duyệt từng biến thể và gọi `_fulfillmentClient.InitializeInventoryForSkuAsync(variant.Id, product.SellerId, initialQuantity: 0, ct)`.
+     - Nếu bất kỳ biến thể nào trả về `null` (thất bại), ném `DomainException("FULFILLMENT_UNAVAILABLE", $"Cannot initialize inventory for SKU '{variant.SkuCode}'. Fulfillment service is unavailable or returned an error.", 502)`.
+   - Commit transaction nếu tất cả SKUs được khởi tạo thành công; nếu có lỗi ngoại lệ hoặc fulfillment unavailable, tự động rollback transaction.
 7. **Bước 7:** Trả về `ProductDto` với mã HTTP `200 OK`.
 
 ### 5.2 Checklist hoàn thành

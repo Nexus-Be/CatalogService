@@ -23,6 +23,7 @@ public class AppDbContext : DbContext, ICatalogDbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.HasPostgresExtension("unaccent");
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
         Seeds.CatalogSeedData.SeedAll(modelBuilder);
     }

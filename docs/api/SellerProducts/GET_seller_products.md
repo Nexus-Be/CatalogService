@@ -23,7 +23,7 @@
 | :--- | :--- | :--- | :---: | :--- | :--- |
 | `page` | Query | `int` | Không | Min: 1, Default: 1 | Chỉ mục trang |
 | `pageSize` | Query | `int` | Không | Range: 1 - 100, Default: 20 | Kích thước trang |
-| `keyword` | Query | `string?` | Không | Max: 100 characters | Tìm theo tên hoặc thương hiệu |
+| `keyword` | Query | `string?` | Không | Max: 100 characters | Tìm kiếm không phân biệt dấu tiếng Việt (`unaccent`) theo tên hoặc thương hiệu |
 | `status` | Query | `ProductStatus?`| Không | `Draft`, `Active`, `Inactive` | Lọc theo trạng thái kinh doanh |
 | `categoryId`| Query | `Guid?` | Không | UUIDv4 format | Lọc theo danh mục sản phẩm |
 | `saleType` | Query | `SaleType?` | Không | `Regular`, `Auction` | Lọc theo hình thức bán |
@@ -111,7 +111,7 @@ public sealed record SellerProductListItemDto(
 1. **Bước 1:** `SellerProductsController.SearchSellerProducts` nhận query parameters.
 2. **Bước 2:** Lấy `currentUserId` từ JWT qua `TryGetUserId`.
 3. **Bước 3:** Gọi `_productService.SearchSellerProductsAsync(currentUserId, query, ct)`.
-4. **Bước 4:** Truy vấn database lọc theo `SellerId == currentUserId` và `IsDeleted == false` (`.AsNoTracking()`).
+4. **Bước 4:** Truy vấn database lọc theo `SellerId == currentUserId` và `IsDeleted == false` (`.AsNoTracking()`). Nếu có `keyword`, áp dụng tìm kiếm không dấu `EF.Functions.Unaccent(...)` trên `Name` và `Brand`.
 5. **Bước 5:** Nạp kèm Category, Variants và Images để tính toán `MinPrice`/`MaxPrice`, `VariantCount`, `HasOrder`.
 6. **Bước 6:** Thực hiện phân trang trực tiếp trên database qua `.Skip().Take()` và `.CountAsync()`.
 7. **Bước 7:** Trả về Pure DTO `PagedData<SellerProductListItemDto>` với mã HTTP `200 OK`.
