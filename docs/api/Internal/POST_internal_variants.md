@@ -10,6 +10,7 @@
 ## 1. Thông tin Định tuyến & RBAC (Routing & Authorization)
 - **HTTP Method:** `POST`
 - **Route Endpoint:** `/api/v1/internal/variants`
+- **Alias Endpoint:** `/api/v1/internal/catalog/skus:batch-get`
 - **Quyền hạn (RBAC Policy):** `AllowAnonymous` / `InternalMicroservice` (Endpoint nội bộ bảo vệ bởi API Gateway network boundary hoặc Mutual TLS)
 - **Quy tắc Sở hữu (Resource Ownership):** Không yêu cầu (Cho phép đọc thông tin nhiều biến thể thuộc nhiều người bán khác nhau để tính toán giỏ hàng và tạo đơn)
 - **Controller:** `Catalog.Api/Controllers/Internal/InternalVariantsController.cs`

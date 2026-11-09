@@ -119,8 +119,45 @@ public class ProductsController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, product);
     }
 
+    /// <summary>Lists public active auction products with filtering and pagination (CAT-46).</summary>
+    [HttpGet("auctions")]
+    [ProducesResponseType(typeof(PagedData<AuctionProductListItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ListAuctions(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? keyword = null,
+        [FromQuery] Guid? categoryId = null,
+        [FromQuery] Guid? sellerId = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? sortBy = null,
+        CancellationToken ct = default)
+    {
+        if (page < 1 || pageSize < 1 || pageSize > 100)
+        {
+            return this.BadRequestError("VAL_INVALID_PAGINATION", "Page must be greater than or equal to 1, and pageSize must be between 1 and 100.");
+        }
+
+        var result = await _productService.SearchAuctionsAsync(
+            new AuctionListQuery(page, pageSize, keyword, categoryId, sellerId, status, sortBy),
+            ct);
+
+        return Ok(result);
+    }
+
+    /// <summary>Gets public auction product details with single unpriced variant (CAT-47).</summary>
+    [HttpGet("auctions/{id:guid}")]
+    [ProducesResponseType(typeof(AuctionProductDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAuctionDetail([FromRoute] Guid id, CancellationToken ct)
+    {
+        var product = await _productService.GetAuctionDetailAsync(id, ct);
+        return Ok(product);
+    }
+
     /// <summary>Creates a new auction product in Draft status (CAT-43). Does not require variant price.</summary>
     [HttpPost("auction")]
+    [HttpPost("auctions")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -140,6 +177,33 @@ public class ProductsController : ControllerBase
 
         var product = await _productService.CreateAuctionProductAsync(request, currentUserId, ct);
         return StatusCode(StatusCodes.Status201Created, product);
+    }
+
+    /// <summary>Updates auction product status (CAT-49). Locks permanently when transition to Auctioned.</summary>
+    [HttpPatch("auctions/{id:guid}/status")]
+    [RequireRole("seller", "admin")]
+    [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ChangeAuctionStatus(
+        [FromRoute] Guid id,
+        [FromBody] ChangeProductStatusRequest request,
+        CancellationToken ct)
+    {
+        if (!this.TryGetUserId(out var currentUserId, out var errorResult))
+        {
+            return errorResult;
+        }
+
+        if (string.IsNullOrWhiteSpace(request?.Status))
+        {
+            return this.BadRequestError("VAL_INVALID_INPUT", "Status is required.");
+        }
+
+        var updated = await _productService.ChangeAuctionStatusAsync(id, request, currentUserId, ct);
+        return Ok(updated);
     }
 
     /// <summary>Updates product general details (CAT-02).</summary>

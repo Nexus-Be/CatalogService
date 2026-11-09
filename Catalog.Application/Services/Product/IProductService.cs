@@ -59,7 +59,7 @@ public interface IProductService
     Task<ProductImageDto> AddVariantImageAsync(
         Guid variantId,
         Guid currentUserId,
-        System.IO.Stream fileStream,
+        Stream fileStream,
         string fileName,
         string? altText = null,
         short sortOrder = 0,
@@ -121,5 +121,53 @@ public interface IProductService
 
     Task<ValidateVariantSwitchResponse> ValidateVariantSwitchAsync(
         ValidateVariantSwitchRequest request,
+        CancellationToken cancellationToken = default);
+
+    // Dedicated Auction APIs (CAT-46, CAT-47, CAT-48, CAT-49)
+    Task<PagedData<AuctionProductListItemDto>> SearchAuctionsAsync(
+        AuctionListQuery query,
+        CancellationToken cancellationToken = default);
+
+    Task<AuctionProductDetailDto> GetAuctionDetailAsync(
+        Guid id,
+        CancellationToken cancellationToken = default);
+
+    Task<PagedData<AuctionProductListItemDto>> SearchSellerAuctionsAsync(
+        Guid sellerId,
+        AuctionListQuery query,
+        CancellationToken cancellationToken = default);
+
+    Task<ProductDto> ChangeAuctionStatusAsync(
+        Guid id,
+        ChangeProductStatusRequest request,
+        Guid currentUserId,
+        CancellationToken cancellationToken = default);
+
+    // Admin Operations (CAT-50, CAT-51)
+    Task<PagedData<AdminProductListItemDto>> SearchAdminProductsAsync(
+        AdminProductSearchQuery query,
+        CancellationToken cancellationToken = default);
+
+    Task<ProductDto> ModerateProductAsync(
+        Guid id,
+        ModerateProductRequest request,
+        Guid adminId,
+        CancellationToken cancellationToken = default);
+
+    // Inter-Service Auction Operations
+    Task<AuctionEligibilityResponse> CheckAuctionEligibilityAsync(
+        Guid id,
+        CancellationToken cancellationToken = default);
+
+    Task<ProductDto> LockForAuctionAsync(
+        Guid id,
+        CancellationToken cancellationToken = default);
+
+    Task<ProductDto> UnlockFromAuctionAsync(
+        Guid id,
+        CancellationToken cancellationToken = default);
+
+    Task<ProductDto> MarkAsAuctionedAsync(
+        Guid id,
         CancellationToken cancellationToken = default);
 }

@@ -1,4 +1,4 @@
-# CATALOG SERVICE - POST /api/v1/products/auction
+﻿# CATALOG SERVICE - POST /api/v1/products/auction
 
 > **Feature / Use Case:** Tạo sản phẩm phục vụ phiên đấu giá ở trạng thái Draft [CAT-43] (Tự động sinh biến thể duy nhất không kèm giá cố định - Unpriced SKU)
 > **Trạng thái:** ✅ VERIFIED
@@ -34,7 +34,8 @@ public sealed record CreateAuctionProductRequest(
     string? Brand = null,
     string? SkuCode = null,
     List<ProductSpecificationDto>? Specifications = null,
-    Guid? SellerId = null);
+    Guid? SellerId = null,
+    int? WeightGrams = null);
 ```
 - **Bảng quy chuẩn Validation:**
 | Tham số | Kiểu C# | Bắt buộc | Ràng buộc / Giới hạn | Ghi chú |

@@ -8,6 +8,7 @@ using Catalog.Infrastructure.Persistence;
 using Catalog.Infrastructure.Services.Cloudinary;
 using Catalog.Infrastructure.Services.Common;
 using Catalog.Infrastructure.Services.Fulfillment;
+using Catalog.Infrastructure.Services.User;
 
 public static class DependencyInjection
 {
@@ -51,6 +52,22 @@ public static class DependencyInjection
         {
             client.BaseAddress = new Uri(fulfillmentBaseUrl.TrimEnd('/') + "/");
             client.Timeout = TimeSpan.FromSeconds(10);
+        })
+        .AddHttpMessageHandler<Services.Common.IdentityPropagationHandler>()
+        .AddHttpMessageHandler<InternalServiceAuthHandler>();
+
+        // Internal User Client (Permission & Seller Verification)
+        var userBaseUrl = Environment.GetEnvironmentVariable("USER_SERVICE_URL")
+            ?? configuration["USER_SERVICE_URL"]
+            ?? configuration["User:BaseUrl"]
+            ?? configuration["Services:User:BaseUrl"]
+            ?? configuration["UserService:BaseUrl"]
+            ?? "http://localhost:8001/";
+
+        services.AddHttpClient<IUserClient, UserClient>(client =>
+        {
+            client.BaseAddress = new Uri(userBaseUrl.TrimEnd('/') + "/");
+            client.Timeout = TimeSpan.FromSeconds(5);
         })
         .AddHttpMessageHandler<Services.Common.IdentityPropagationHandler>()
         .AddHttpMessageHandler<InternalServiceAuthHandler>();

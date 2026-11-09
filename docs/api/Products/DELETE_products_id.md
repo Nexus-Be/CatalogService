@@ -37,6 +37,8 @@
 ## 4. Ma trận Mã lỗi RFC 9110 (Error Matrix)
 | HTTP Status | Error Code | Message (Sentence case) | Điều kiện kích hoạt (Trigger Condition) |
 | :---: | :--- | :--- | :--- |
+| `400 Bad Request` | `PRODUCT_IN_AUCTION` | `Product is currently in an active auction and cannot be deleted.` | Sản phẩm đang trong phiên đấu giá mở (`InAuction`) |
+| `400 Bad Request` | `PRODUCT_ALREADY_AUCTIONED` | `Auctioned products cannot be deleted.` | Sản phẩm đấu giá đã bán xong (`Auctioned`) |
 | `401 Unauthorized` | `UNAUTHORIZED` | `Authentication is required to access this resource.` | Không có Bearer token hợp lệ |
 | `403 Forbidden` | `FORBIDDEN` | `You do not have permission to delete this product.` | `currentUserId` không sở hữu sản phẩm này |
 | `404 Not Found` | `PRODUCT_NOT_FOUND` | `Product not found with the specified identifier.` | Không tìm thấy sản phẩm hoặc sản phẩm đã bị xóa trước đó |

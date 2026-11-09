@@ -96,6 +96,8 @@ public sealed record ProductDto(
 ## 4. Ma trận Mã lỗi RFC 9110 (Error Matrix)
 | HTTP Status | Error Code | Message (Sentence case) | Điều kiện kích hoạt (Trigger Condition) |
 | :---: | :--- | :--- | :--- |
+| `400 Bad Request` | `PRODUCT_IN_AUCTION` | `Product is currently in an active auction and cannot be modified.` | Sản phẩm đang trong phiên đấu giá mở (`InAuction`) |
+| `400 Bad Request` | `PRODUCT_ALREADY_AUCTIONED` | `Auctioned products cannot be modified.` | Sản phẩm đấu giá đã bán xong (`Auctioned`) |
 | `400 Bad Request` | `VAL_INVALID_INPUT` | `Product name is required.` | Tên sản phẩm bị rỗng hoặc nhỏ hơn 3 ký tự |
 | `400 Bad Request` | `VAL_INVALID_INPUT` | `Specification name cannot be empty.` | Tên thông số kỹ thuật bị rỗng hoặc trắng |
 | `400 Bad Request` | `VAL_LIMIT_EXCEEDED` | `A product can have a maximum of 30 specifications.` | Danh sách `specifications` vượt quá 30 mục |
@@ -111,6 +113,8 @@ public sealed record ProductDto(
 | `ProductStatus.Draft` | `0` | `"Draft"` | Bản nháp |
 | `ProductStatus.Active` | `1` | `"Active"` | Đang mở bán |
 | `ProductStatus.Inactive` | `2` | `"Inactive"` | Tạm ngưng |
+| `ProductStatus.Auctioned` | `3` | `"Auctioned"` | Đã bán xong trong phiên đấu giá |
+| `ProductStatus.InAuction` | `4` | `"InAuction"` | Đang trong phiên đấu giá mở (Khóa sửa/xóa) |
 
 ---
 

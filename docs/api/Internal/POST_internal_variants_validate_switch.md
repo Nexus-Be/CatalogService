@@ -60,7 +60,7 @@ public sealed record ValidateVariantSwitchResponse(
     string NewSkuName,
     decimal NewUnitPrice,
     bool IsPurchasable,
-    int WeightGrams = 200);
+    int? WeightGrams = null);
 ```
 
 - **Bảng chi tiết trường dữ liệu trả về:**
@@ -107,4 +107,5 @@ public sealed record ValidateVariantSwitchResponse(
 2. Đổi variant khác sản phẩm ➔ Trả về `400 Bad Request`, `errorCode: "CATALOG_VARIANT_MISMATCH"`.
 3. SKU không tồn tại ➔ Trả về `404 Not Found`, `errorCode: "CATALOG_SKU_NOT_FOUND"`.
 4. Đầu vào rỗng ➔ Trả về `400 Bad Request`, `errorCode: "VAL_INVALID_INPUT"`.
+
 

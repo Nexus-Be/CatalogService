@@ -1,4 +1,4 @@
-# CATALOG SERVICE - POST /api/v1/products
+﻿# CATALOG SERVICE - POST /api/v1/products
 
 > **Feature / Use Case:** Tạo sản phẩm thương mại thông thường ở trạng thái Draft [CAT-01] (Hỗ trợ tạo đơn bước hoặc kèm danh sách biến thể ban đầu)
 > **Trạng thái:** ✅ VERIFIED
@@ -51,26 +51,47 @@ public sealed record CreateProductRequest(
 - **Bảng quy chuẩn Validation:**
 | Trường | Kiểu C# | Bắt buộc | Ràng buộc / Giới hạn | Ghi chú |
 | :--- | :--- | :---: | :--- | :--- |
-| `sellerId` | `Guid` | Không | UUIDv4 format | Nếu rỗng, hệ thống tự động gán từ JWT UserId |
+| `sellerId` | `Guid` | Không | UUIDv4 format | **Không cần gửi.** Hệ thống tự động gán từ JWT UserId |
 | `categoryId` | `Guid` | Có | UUIDv4 format | Danh mục phải tồn tại và đang hoạt động |
 | `name` | `string` | Có | Độ dài: 3 - 250 ký tự | Tên hiển thị của sản phẩm |
 | `description` | `string?` | Không | Max: 4000 ký tự | Mô tả chi tiết sản phẩm |
 | `brand` | `string?` | Không | Max: 100 ký tự | Thương hiệu sản xuất |
-| `saleType` | `SaleType` | Không | Mặc định: `Regular` (`0`) | Hàng thương mại cố định giá |
-| `specifications` | `List<ProductSpecificationDto>?` | Không | Tối đa 30 mục (Name <= 100, Value <= 500) | Danh sách thông số kỹ thuật dạng cặp { name, value } |
-| `variants` | `List<CreateVariantRequest>?` | Không | Tối đa 10 SKUs ban đầu | Tùy chọn tạo kèm biến thể (quy trình Single-Step) |
+| `saleType` | `SaleType` | Không | Mặc định: `Regular` (`0`) | **Không cần gửi.** Tự động là Regular. Hàng đấu giá có API riêng. |
+| `specifications` | `List<ProductSpecificationDto>?` | Không | Tối đa 30 mục (Name <= 100, Value <= 500) | **Tùy chọn.** Danh sách thông số kỹ thuật dạng cặp { name, value } |
+| `variants` | `List<CreateVariantRequest>?` | Không | Tối đa 10 SKUs ban đầu | **Tùy chọn.** Tạo kèm biến thể hoặc tạo sau qua API variants |
+| `weightGrams` | `int?` | Không | Số nguyên dương (> 0, Gram) | **Tùy chọn khi Draft, Bắt buộc khi Active.** Trọng lượng đóng gói chuẩn của sản phẩm tính theo Gram |
 
-- **JSON Request Body mẫu (Pure DTO - camelCase):**
+> [!TIP]
+> **HƯỚNG DẪN TỰ DO THIẾT KẾ DÀNH CHO FRONTEND:**
+> 1. **`saleType`:** **Không cần gửi.** Backend luôn tự động gán `Regular`. (Nếu tạo sản phẩm đấu giá, sử dụng endpoint riêng `POST /api/v1/products/auction`).
+> 2. **`sellerId`:** **Không cần gửi.** Backend tự trích xuất từ JWT Token của Seller.
+> 3. **`specifications`:** **Tùy chọn.** Nếu người dùng không nhập, bỏ qua trường này hoặc gửi `null` / `[]`.
+> 4. **`variants`:** **Tùy chọn.** FE có thể tạo sản phẩm trước (mẫu tối giản) rồi mới gọi `POST /api/v1/products/{id}/variants` để thêm từng biến thể, HOẶC gom tạo cùng lúc trong 1 bước (mẫu đầy đủ).
+
+### 2.3 JSON Request Body Mẫu
+
+#### Mẫu 1: Tối giản (Minimal Request - Khuyên dùng cho quy trình nhiều bước / Wizard)
+FE chỉ cần gửi thông tin cơ bản của sản phẩm, không cần gửi `saleType`, `sellerId`, `variants` hay `specifications`:
+```json
+{
+  "categoryId": "22222222-2222-2222-2222-222222222222",
+  "name": "Bàn Phím Cơ Không Dây Nexus RGB",
+  "brand": "Nexus Tech",
+  "description": "Bàn phím cơ Bluetooth 5.1 hotswap 3 modes kết nối độ trễ siêu thấp."
+}
+```
+
+#### Mẫu 2: Đầy đủ (Single-step Request - Gom cả thông số kỹ thuật và biến thể)
+Dành cho trường hợp FE thiết kế form gom tất cả trong một màn hình:
 ```json
 {
   "categoryId": "22222222-2222-2222-2222-222222222222",
   "name": "Bàn Phím Cơ Không Dây Nexus RGB",
   "description": "Bàn phím cơ Bluetooth 5.1 hotswap 3 modes kết nối độ trễ siêu thấp.",
   "brand": "Nexus Tech",
-  "saleType": "Regular",
   "specifications": [
-    { "name": "switch", "value": "Gateron Yellow" },
-    { "name": "battery", "value": "4000mAh" }
+    { "name": "Switch Type", "value": "Gateron Yellow" },
+    { "name": "Dung lượng pin", "value": "4000mAh" }
   ],
   "variants": [
     {
