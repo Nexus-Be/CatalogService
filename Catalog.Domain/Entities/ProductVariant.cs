@@ -14,6 +14,7 @@ public class ProductVariant : AuditableEntity<Guid>
     public bool HasOrder { get; set; }
     public required VariantStatus Status { get; set; } = VariantStatus.Active;
     public VariantInactiveReason? StatusReason { get; set; }
+    public int? WeightGrams { get; set; }
 
     // Navigation
     public Product? Product { get; set; }

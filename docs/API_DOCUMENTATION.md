@@ -10,7 +10,7 @@
 
 ---
 
-## 📌 MỤC LỤC DANH SÁCH 30 ENDPOINTS
+## 📌 MỤC LỤC DANH SÁCH 36 ENDPOINTS
 
 | STT | Phương thức | Endpoint Route | Controller & Action | Nhóm nghiệp vụ |
 | :---: | :---: | :--- | :--- | :--- |
@@ -44,6 +44,16 @@
 | **28** | `DELETE` | `/api/v1/products/{id}/images/{imageId}` | `ProductsController.DeleteImage` | Phân hệ Hình ảnh (Lồng) |
 | **29** | `POST` | `/api/v1/internal/variants` | `InternalVariantsController.BatchGet` | Liên Service (Batch) |
 | **30** | `POST` | `/api/v1/internal/variants/check-status` | `InternalVariantsController.CheckStatus` | Liên Service (Cart/Order) |
+| **31** | `GET` | `/api/v1/products/auctions` | `ProductsController.SearchAuctions` | Phân hệ Đấu giá (CAT-46) |
+| **32** | `GET` | `/api/v1/products/auctions/{id}` | `ProductsController.GetAuctionDetail` | Phân hệ Đấu giá (CAT-47) |
+| **33** | `GET` | `/api/v1/seller/products/auctions` | `SellerProductsController.SearchSellerAuctions` | Phân hệ Đấu giá (CAT-48) |
+| **34** | `PATCH` | `/api/v1/products/auctions/{id}/status` | `ProductsController.ChangeAuctionStatus` | Phân hệ Đấu giá (CAT-49) |
+| **35** | `GET` | `/api/v1/admin/products` & `/api/v1/products/admin` (Alias) | `AdminProductsController.SearchAdminProducts` | Phân hệ Quản trị & Giám sát (CAT-50) |
+| **36** | `PATCH` | `/api/v1/admin/products/{id}/moderate` & `/api/v1/products/admin/{id}/moderate` (Alias) | `AdminProductsController.ModerateProduct` | Phân hệ Quản trị & Giám sát (CAT-51) |
+| **37** | `GET` | `/api/v1/internal/products/{id}/auction-eligibility` | `InternalProductsController.CheckAuctionEligibility` | Liên Service Auction (CAT-52) |
+| **38** | `POST` | `/api/v1/internal/products/{id}/lock-auction` | `InternalProductsController.LockForAuction` | Liên Service Auction (CAT-53) |
+| **39** | `POST` | `/api/v1/internal/products/{id}/unlock-auction` | `InternalProductsController.UnlockFromAuction` | Liên Service Auction (CAT-54) |
+| **40** | `POST` | `/api/v1/internal/products/{id}/mark-auctioned` | `InternalProductsController.MarkAsAuctioned` | Liên Service Auction (CAT-55) |
 
 ---
 
@@ -507,7 +517,7 @@
 | **Application Service** | `Catalog.Application.Services.Product.IProductService.ChangeStatusAsync` |
 | **Primary Entity** | `Catalog.Domain.Entities.Product` |
 | **RBAC & Identity** | `[RequireRole("seller", "admin")]`. Kiểm tra sở hữu seller |
-| **Enums Involved** | `ProductStatus` (Draft = 0, Active = 1, Inactive = 2), `ProductInactiveReason` (SellerPaused = 0, AdminLocked = 1, OutOfStock = 2, Violation = 3) |
+| **Enums Involved** | `ProductStatus` (Draft = 0, Active = 1, Inactive = 2, Auctioned = 3, InAuction = 4), `ProductInactiveReason` (SellerPaused = 0, Discontinued = 1, AdminLocked = 2, Other = 3) |
 | **Audit Logging** | `_dbContext.AddAuditLog(AuditAction.ProductUpdate, ...)` |
 | **Cross-service Call** | `None` |
 
@@ -857,3 +867,95 @@
 * **Response Body (`CheckVariantStatusResponse`):**
   * `items` (`Array of VariantStatusItemDto`): `variantId` (`Guid`), `productId` (`Guid`), `productStatus` (`String`), `variantStatus` (`String`), `saleType` (`String`), `isPurchasable` (`Boolean`), `reason` (`String`: `"OK"` hoặc mã lý do từ chối), `price` (`Decimal?`), `currency` (`String`).
   * `notFoundIds` (`Array of Guid`).
+
+
+---
+
+## 🏛️ PHẦN F: PHÂN HỆ SẢN PHẨM ĐẤU GIÁ (AUCTION PRODUCTS)
+
+---
+
+### API 31. `GET /api/v1/products/auctions` — Liệt kê sản phẩm đấu giá công khai [CAT-46]
+- **Quyền hạn:** `AllowAnonymous` (Công khai cho toàn bộ Buyer và Auction Service).
+- **Mô tả:** Trả về danh sách phân trang các sản phẩm đấu giá (`SaleType == Auction`) đang hoạt động (`Status == Active`). Hỗ trợ lọc theo `categoryId`, `sellerId`, tìm kiếm từ khóa không dấu.
+- **Tài liệu chi tiết:** Xem [`GET_products_auctions.md`](api/Products/GET_products_auctions.md).
+
+---
+
+### API 32. `GET /api/v1/products/auctions/{id}` — Xem chi tiết sản phẩm đấu giá [CAT-47]
+- **Quyền hạn:** `AllowAnonymous`.
+- **Mô tả:** Trả về DTO phẳng (`AuctionProductDetailDto`) tích hợp thông số SKU duy nhất, thuộc tính hiện vật, danh sách hình ảnh và thông số vận chuyển chuyên biệt cho đấu giá.
+- **Tài liệu chi tiết:** Xem [`GET_products_auctions_id.md`](api/Products/GET_products_auctions_id.md).
+
+---
+
+### API 33. `GET /api/v1/seller/products/auctions` — Seller quản lý sản phẩm đấu giá [CAT-48]
+- **Quyền hạn:** `[RequireRole("seller")]`, bắt buộc `X-User-Id`.
+- **Mô tả:** Seller tra cứu toàn bộ danh sách sản phẩm đấu giá do chính mình tạo ra ở mọi trạng thái (`Draft`, `Active`, `Auctioned`, `Inactive`).
+- **Tài liệu chi tiết:** Xem [`GET_seller_products_auctions.md`](api/Products/GET_seller_products_auctions.md).
+
+---
+
+### API 34. `PATCH /api/v1/products/auctions/{id}/status` — Cập nhật trạng thái sản phẩm đấu giá [CAT-49]
+- **Quyền hạn:** Seller sở hữu hoặc Admin/Internal.
+- **Mô tả:** Kích hoạt sản phẩm lên sàn (`Active`) hoặc đánh dấu hoàn tất phiên đấu giá (`Auctioned`). Khi đã sang `Auctioned`, sản phẩm bị đóng băng vĩnh viễn (cấm sửa, xóa mềm, đổi trạng thái).
+- **Tài liệu chi tiết:** Xem [`PATCH_products_auctions_id_status.md`](api/Products/PATCH_products_auctions_id_status.md).
+
+---
+
+## 🛡️ PHẦN G: PHÂN HỆ QUẢN TRỊ & KIỂM DUYỆT (ADMIN & STAFF MODERATION)
+
+---
+
+### API 35. `GET /api/v1/admin/products` — Quản trị viên giám sát toàn bộ sản phẩm sàn [CAT-50]
+- **Quyền hạn:** `[RequireRole("admin", "staff")]`.
+- **Endpoint Route:** `/api/v1/admin/products` (và alias `/api/v1/products/admin` tương thích YARP Gateway).
+- **Mô tả:** Hỗ trợ lọc nâng cao theo `sellerId`, `status`, `statusReason` (`AdminLocked`, `SellerPaused`...), `saleType`, `categoryId`, từ khóa tìm kiếm.
+- **Tài liệu chi tiết:** Xem [`GET_admin_products.md`](api/Products/GET_admin_products.md).
+
+---
+
+### API 36. `PATCH /api/v1/admin/products/{id}/moderate` — Admin/Staff duyệt hoặc khóa sản phẩm [CAT-51]
+- **Quyền hạn:** `[RequireRole("admin", "staff")]`, bắt buộc `X-User-Id`.
+- **Endpoint Route:** `/api/v1/admin/products/{id}/moderate` (và alias `/api/v1/products/admin/{id}/moderate`).
+- **Mô tả:**
+  - `APPROVE` / `UNLOCK`: Cho phép sản phẩm lên sàn bán (`Status = Active`, xóa `StatusReason`). Yêu cầu tối thiểu 1 variant và 1 ảnh hợp lệ.
+  - `SUSPEND` / `REJECT`: Cưỡng chế dừng bán (`Status = Inactive`, `StatusReason = AdminLocked`, tự động tắt toàn bộ variants). Chặn Seller tự ý mở khóa.
+  - Tự động ghi lại vết lịch sử vào bảng `audit_logs`.
+- **Tài liệu chi tiết:** Xem [`PATCH_admin_products_id_moderate.md`](api/Products/PATCH_admin_products_id_moderate.md).
+
+---
+
+## 🔄 PHẦN H: PHÂN HỆ ĐỒNG BỘ LIÊN SERVICE AUCTION (AUCTION INTER-SERVICE SYNC)
+
+---
+
+### API 37. `GET /api/v1/internal/products/{id}/auction-eligibility` — Tiền kiểm tra điều kiện sản phẩm mở phiên [CAT-52]
+- **Quyền hạn:** `Internal` (Gọi trực tiếp liên service qua Docker network giữa `AuctionService` và `CatalogService`).
+- **Endpoint Route:** `/api/v1/internal/products/{id}/auction-eligibility`
+- **Mô tả:** Kiểm tra nhanh sản phẩm trước khi tạo phiên đấu giá: Sản phẩm có tồn tại, đúng `SaleType == Auction`, đang ở trạng thái `Active`, và có ít nhất 1 ảnh hiển thị hợp lệ.
+- **Tài liệu chi tiết:** Xem [`GET_internal_products_id_auction_eligibility.md`](api/Internal/GET_internal_products_id_auction_eligibility.md).
+
+---
+
+### API 38. `POST /api/v1/internal/products/{id}/lock-auction` — Khóa sản phẩm khi phiên đấu giá bắt đầu mở [CAT-53]
+- **Quyền hạn:** `Internal`.
+- **Endpoint Route:** `/api/v1/internal/products/{id}/lock-auction`
+- **Mô tả:** Chuyển trạng thái sản phẩm sang `InAuction` ngay khi phiên mở. Kích hoạt toàn bộ Guardrails của Catalog: Cấm tuyệt đối Seller sửa thông tin, đổi trạng thái/ngừng bán, xóa mềm hoặc xóa ảnh sản phẩm trong lúc phiên đang diễn ra.
+- **Tài liệu chi tiết:** Xem [`POST_internal_products_id_lock_auction.md`](api/Internal/POST_internal_products_id_lock_auction.md).
+
+---
+
+### API 39. `POST /api/v1/internal/products/{id}/unlock-auction` — Mở khóa sản phẩm khi phiên bị hủy hoặc không ai mua [CAT-54]
+- **Quyền hạn:** `Internal`.
+- **Endpoint Route:** `/api/v1/internal/products/{id}/unlock-auction`
+- **Mô tả:** Trả trạng thái sản phẩm từ `InAuction` về `Active` khi phiên đấu giá kết thúc mà không bán được (hủy phiên / hết giờ không ai bid). Cho phép Seller đưa sản phẩm vào phiên khác hoặc tiếp tục chỉnh sửa.
+- **Tài liệu chi tiết:** Xem [`POST_internal_products_id_unlock_auction.md`](api/Internal/POST_internal_products_id_unlock_auction.md).
+
+---
+
+### API 40. `POST /api/v1/internal/products/{id}/mark-auctioned` — Chốt bán sản phẩm khi phiên đấu giá thành công [CAT-55]
+- **Quyền hạn:** `Internal`.
+- **Endpoint Route:** `/api/v1/internal/products/{id}/mark-auctioned`
+- **Mô tả:** Chốt bán thành công cho người trúng đấu giá, chuyển trạng thái sản phẩm sang `Auctioned` (khóa cứng vĩnh viễn, lưu vết lịch sử giao dịch).
+- **Tài liệu chi tiết:** Xem [`POST_internal_products_id_mark_auctioned.md`](api/Internal/POST_internal_products_id_mark_auctioned.md) và hợp đồng liên service [`AUCTION_INTER_SERVICE_CONTRACT.md`](api/Internal/AUCTION_INTER_SERVICE_CONTRACT.md).

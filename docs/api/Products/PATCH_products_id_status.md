@@ -85,7 +85,9 @@ public sealed record ProductDto(
 ## 4. Ma trận Mã lỗi RFC 9110 (Error Matrix)
 | HTTP Status | Error Code | Message (Sentence case) | Điều kiện kích hoạt (Trigger Condition) |
 | :---: | :--- | :--- | :--- |
-| `400 Bad Request` | `VAL_INVALID_INPUT` | `Invalid product status. Allowed values: Draft, Active, Inactive.` | Giá trị `status` không nằm trong enum hợp lệ |
+| `400 Bad Request` | `PRODUCT_IN_AUCTION` | `Product is currently in an active auction and cannot change status.` | Sản phẩm đang trong phiên đấu giá mở (`InAuction`) |
+| `400 Bad Request` | `PRODUCT_ALREADY_AUCTIONED` | `Auctioned products are permanently locked and cannot change status.` | Sản phẩm đấu giá đã bán xong (`Auctioned`) |
+| `400 Bad Request` | `VAL_INVALID_INPUT` | `Invalid product status. Allowed values: Draft, Active, Inactive, Auctioned.` | Giá trị `status` không nằm trong enum hợp lệ |
 | `400 Bad Request` | `VAL_NO_ACTIVE_VARIANTS` | `Product must have at least one active variant before activation.` | Khi chuyển sang `Active` nhưng chưa có variant nào kích hoạt |
 | `400 Bad Request` | `VAL_NO_ACTIVE_IMAGES` | `Product must have at least one active image before activation.` | Khi chuyển sang `Active` nhưng chưa có ảnh nào kích hoạt |
 | `401 Unauthorized` | `UNAUTHORIZED` | `Authentication is required to access this resource.` | Không có Bearer token hợp lệ |
@@ -100,6 +102,8 @@ public sealed record ProductDto(
 | `ProductStatus.Draft` | `0` | `"Draft"` | Bản nháp chưa hiển thị ra ngoài |
 | `ProductStatus.Active` | `1` | `"Active"` | Đang mở bán công khai |
 | `ProductStatus.Inactive` | `2` | `"Inactive"` | Tạm ngưng kinh doanh |
+| `ProductStatus.Auctioned` | `3` | `"Auctioned"` | Đã bán xong trong phiên đấu giá |
+| `ProductStatus.InAuction` | `4` | `"InAuction"` | Đang trong phiên đấu giá mở (Khóa đổi trạng thái) |
 
 ---
 

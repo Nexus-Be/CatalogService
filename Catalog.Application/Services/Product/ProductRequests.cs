@@ -12,7 +12,8 @@ public sealed record CreateProductRequest(
     string? Brand = null,
     SaleType SaleType = SaleType.Regular,
     List<ProductSpecificationDto>? Specifications = null,
-    List<CreateVariantRequest>? Variants = null);
+    List<CreateVariantRequest>? Variants = null,
+    int? WeightGrams = null);
 
 public sealed record CreateAuctionProductRequest(
     Guid CategoryId,
@@ -21,7 +22,8 @@ public sealed record CreateAuctionProductRequest(
     string? Brand = null,
     string? SkuCode = null,
     List<ProductSpecificationDto>? Specifications = null,
-    Guid? SellerId = null);
+    Guid? SellerId = null,
+    int? WeightGrams = null);
 
 public sealed record UpdateProductRequest(
     string Name,
@@ -30,7 +32,8 @@ public sealed record UpdateProductRequest(
     Guid? CategoryId = null,
     SaleType? SaleType = null,
     string? Status = null,
-    List<ProductSpecificationDto>? Specifications = null);
+    List<ProductSpecificationDto>? Specifications = null,
+    int? WeightGrams = null);
 
 public sealed record ChangeProductStatusRequest(
     string Status,
@@ -58,13 +61,14 @@ public sealed record CreateVariantRequest(
     decimal? Price = null,
     string? Currency = "VND",
     List<CreateVariantAttributeRequest>? Attributes = null,
-    int Quantity = 0);
+    int? WeightGrams = null);
 
 public sealed record UpdateVariantRequest(
     string Name,
     decimal Price,
     string? Currency = "VND",
-    List<CreateVariantAttributeRequest>? Attributes = null);
+    List<CreateVariantAttributeRequest>? Attributes = null,
+    int? WeightGrams = null);
 
 public sealed record ChangeVariantStatusRequest(
     string Status,
@@ -102,3 +106,20 @@ public sealed record ReserveStockRequest(
     Guid ProductId,
     int Quantity,
     Guid OrderId);
+
+public sealed record ModerateProductRequest(
+    string Action,
+    string? Reason = null,
+    string? Note = null);
+
+public sealed record AdminProductSearchQuery(
+    int Page = 1,
+    int PageSize = 20,
+    string? Keyword = null,
+    ProductStatus? Status = null,
+    ProductInactiveReason? StatusReason = null,
+    Guid? CategoryId = null,
+    Guid? SellerId = null,
+    SaleType? SaleType = null,
+    string? SortBy = null,
+    string? SortDirection = "desc");

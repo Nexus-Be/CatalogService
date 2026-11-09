@@ -20,6 +20,7 @@ namespace Catalog.Infrastructure.Persistence.Migrations
                 .HasAnnotation("ProductVersion", "8.0.10")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "unaccent");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("Catalog.Domain.Entities.AuditLog", b =>
@@ -283,6 +284,9 @@ namespace Catalog.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("UpdatedBy")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("WeightGrams")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -712,6 +716,9 @@ namespace Catalog.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("UpdatedBy")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("WeightGrams")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 

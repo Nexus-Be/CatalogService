@@ -78,4 +78,37 @@ public class SellerProductsController : ControllerBase
         var product = await _productService.GetSellerProductDetailAsync(id, currentUserId, ct);
         return Ok(product);
     }
+
+    /// <summary>Lists and searches all auction products belonging to the authenticated seller (CAT-48).</summary>
+    [HttpGet("auctions")]
+    [RequireRole("seller", "admin")]
+    [ProducesResponseType(typeof(PagedData<AuctionProductListItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> SearchSellerAuctions(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? keyword = null,
+        [FromQuery] string? status = null,
+        [FromQuery] Guid? categoryId = null,
+        [FromQuery] string? sortBy = null,
+        CancellationToken ct = default)
+    {
+        if (!this.TryGetUserId(out var currentUserId, out var errorResult))
+        {
+            return errorResult;
+        }
+
+        var query = new AuctionListQuery(
+            page,
+            pageSize,
+            keyword,
+            categoryId,
+            currentUserId,
+            status,
+            sortBy);
+
+        var result = await _productService.SearchSellerAuctionsAsync(currentUserId, query, ct);
+        return Ok(result);
+    }
 }

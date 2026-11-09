@@ -1,188 +1,132 @@
-# TÀI LIỆU HƯỚNG DẪN TÍCH HỢP FRONTEND: LUỒNG TẠO SẢN PHẨM & NHẬP KHO CHUẨN E-COMMERCE
+# TÀI LIỆU HƯỚNG DẪN TÍCH HỢP FRONTEND: LUỒNG TẠO SẢN PHẨM & MỞ BÁN (CATALOG SERVICE)
 
 > **Dành cho:** Đội ngũ Frontend Developers (Seller Center Web, Buyer App, Admin Portal)  
-> **Dịch vụ tích hợp:**  
-> - **Catalog Service:** Port `8002` (Quản lý Danh mục, Sản phẩm, Biến thể, Ảnh, Thông số kỹ thuật)  
-> - **Fulfillment Service:** Port `8006` (Quản lý Tồn kho vật lý, Phiếu nhập/điều chỉnh kho)  
+> **Dịch vụ phụ trách:** **Catalog Service** (Port `8002` - Quản lý Danh mục, Sản phẩm, Biến thể, Ảnh, Thông số kỹ thuật)  
 > **Cập nhật lần cuối:** 2026-11-06  
 
 ---
 
-## 1. Lưu Ý Bắt Buộc Đối Với Frontend (Quan Trọng)
+## 1. Phạm Vi Trách Nhiệm Của Catalog Service
+
+* **Catalog Service đảm nhiệm:**
+  1. Quản lý toàn bộ thông tin sản phẩm, danh mục, thông số kỹ thuật, hình ảnh và biến thể (SKU).
+  2. Quản lý vòng đời hiển thị của sản phẩm (`Draft` $\rightarrow$ `Active` $\rightarrow$ `Inactive`).
+  3. Khi sản phẩm được kích hoạt (`Active`), Catalog Service tự động thông báo khởi tạo định danh SKU sang dịch vụ kho (với số lượng mặc định bằng `0`).
+* **Catalog Service KHÔNG đảm nhiệm:**
+  * Catalog Service **không quản lý việc nhập hàng thực tế, kho vật lý hay phiếu điều chỉnh kho**.
+  * Các nghiệp vụ nhập kho, kiểm kê hàng hóa thực tế và xuất nhập tồn thuộc về phạm vi độc lập của **Fulfillment Service**.
 
 > [!IMPORTANT]
-> **FRONTEND CẦN BỎ HOÀN TOÀN CÁC RÀNG BUỘC TỒN KHO SAU ĐÂY:**
-> 1. **BỎ điều kiện bắt buộc nhập số lượng tồn kho khi tạo sản phẩm / biến thể:** Form tạo sản phẩm ở trạng thái bản nháp (`DRAFT`) **không yêu cầu** nhập số lượng hàng trong kho.
-> 2. **BỎ điều kiện tồn kho > 0 khi bấm kích hoạt ("Đăng bán" / Active):** Không chặn nút chuyển trạng thái sang `ACTIVE` nếu tồn kho bằng 0. Khi sản phẩm chuyển sang `ACTIVE`, hệ thống sẽ tự động khai báo mã SKU sang kho với **số lượng mặc định bằng `0`** (`totalQuantity = 0, availableQuantity = 0`).
-> 3. **Số lượng hàng thực tế được nhập qua phiếu nhập kho riêng:** Sau khi sản phẩm đã được kích hoạt trên sàn, Seller sẽ vào tính năng quản lý kho hàng để gọi API nhập kho sang **Fulfillment Service** nhằm cập nhật số lượng thực tế.
+> **FRONTEND CẦN BỎ HOÀN TOÀN CÁC RÀNG BUỘC TỒN KHO KHI TẠO / KÍCH HOẠT SẢN PHẨM:**
+> 1. **BỎ điều kiện bắt buộc nhập số lượng tồn kho khi tạo sản phẩm / biến thể:** Form tạo sản phẩm ở trạng thái bản nháp (`DRAFT`) **không yêu cầu** người dùng phải nhập số lượng hàng trong kho.
+> 2. **BỎ điều kiện kiểm tra tồn kho > 0 khi bấm kích hoạt ("Đăng bán" / Active):** Không chặn nút chuyển trạng thái sang `ACTIVE` nếu tồn kho đang bằng 0. Khi sản phẩm chuyển sang `ACTIVE`, hệ thống sẽ tự động khai báo mã SKU sang kho với **số lượng mặc định bằng `0`** (`totalQuantity = 0, availableQuantity = 0`).
+> 3. **Nhập hàng thực tế là quy trình riêng:** Việc nhập số lượng hàng thực tế để mở bán sẽ do Seller thực hiện thông qua chức năng quản lý kho hàng của Fulfillment Service (theo đặc tả API của nhóm Fulfillment).
 
 ---
 
-## 2. Quy Trình 4 Bước Tích Hợp API
+## 2. Mức Độ Tự Do Thiết Kế Giao Diện Dành Cho Frontend
+
+Frontend hoàn toàn tự do lựa chọn trải nghiệm người dùng (UX) phù hợp nhất với dự án mà Catalog Service không hề gò bó:
+
+* **Tùy chọn A - Form Nhiều Bước (Wizard Flow - Khuyên dùng):**
+  - *Bước 1:* Form tạo thông tin cơ bản của sản phẩm (chỉ cần `name`, `categoryId`, tùy chọn `brand`, `description`).
+  - *Bước 2:* Màn hình thêm danh sách các biến thể hàng hóa (SKU, giá, thuộc tính).
+  - *Bước 3:* Màn hình tải lên hình ảnh sản phẩm và ảnh biến thể.
+  - *Bước 4:* Xem lại tổng quan và bấm "Đăng bán" (`Active`).
+* **Tùy chọn B - Form Gom Một Bước (Single-step Form):**
+  - Toàn bộ thông tin sản phẩm, thông số kỹ thuật và danh sách các biến thể được điền trên cùng một trang và gửi đồng thời.
+
+### Các trường dữ liệu Frontend KHÔNG CẦN quan tâm:
+* 🚫 **`saleType`:** **Không cần gửi.** Backend luôn tự động gán mặc định là `Regular` (hàng bán thương mại thông thường). Nếu tạo sản phẩm đấu giá, sử dụng màn hình gọi endpoint riêng `POST /api/v1/products/auction`.
+* 🚫 **`sellerId`:** **Không cần gửi.** Backend tự động trích xuất mã định danh của Seller từ JWT Access Token trong header xác thực.
+* 💡 **`specifications`:** **Tùy chọn (Optional).** Nếu người dùng không nhập thông số kỹ thuật, Frontend không cần gửi trường này (hoặc gửi mảng rỗng `[]` hoặc `null`). Khi nhập, gửi dạng danh sách các cặp `{ name, value }`.
+
+---
+
+## 3. Quy Trình Các Bước Trong Catalog Service
 
 ```mermaid
 flowchart LR
-    Step1["BƯỚC 1: TẠO BẢN NHÁP (DRAFT)<br/>POST /api/v1/products<br/>(Catalog Service - Không gọi kho)"]
-    --> Step2["BƯỚC 2: UPLOAD HÌNH ẢNH<br/>POST /api/v1/products/{id}/images<br/>- Ảnh SP: Bắt buộc tối thiểu 1 ảnh<br/>- Ảnh Variant: KHÔNG BẮT BUỘC"]
-    --> Step3["BƯỚC 3: KÍCH HOẠT MỞ BÁN (ACTIVE)<br/>PATCH /api/v1/products/{id}/status<br/>(Catalog tự khởi tạo SKU với Qty = 0 ở kho)"]
-    --> Step4["BƯỚC 4: NHẬP KHO THỰC TẾ<br/>POST /api/v1/inventories/adjust<br/>(Gọi sang Fulfillment Service)"]
+    Step1["BƯỚC 1: TẠO BẢN NHÁP (DRAFT)<br/>Catalog Service<br/>(Lưu thông tin SP - Chưa gọi kho)"]
+    --> Step2["BƯỚC 2: TẢI ẢNH & BIẾN THỂ<br/>Catalog Service<br/>- Ảnh SP: Bắt buộc ≥ 1 ảnh<br/>- Ảnh Variant: Tùy chọn"]
+    --> Step3["BƯỚC 3: KÍCH HOẠT ĐĂNG BÁN (ACTIVE)<br/>Catalog Service<br/>(Tự động đồng bộ SKU sang kho Qty = 0)"]
+    -.-> Step4["BƯỚC 4: NHẬP HÀNG THỰC TẾ<br/>(Fulfillment Service phụ trách riêng)"]
 ```
 
 ---
 
-### BƯỚC 1: Tạo Sản phẩm & Biến thể ở trạng thái Bản Nháp (`DRAFT`)
+### BƯỚC 1: Tạo Sản Phẩm ở Trạng Thái Bản Nháp (`DRAFT`)
 
-* **Endpoint:** `POST /api/v1/products` (Catalog Service)
-* **Headers:**
-  * `Authorization: Bearer <seller_token>`
-  * *(Hoặc khi test dev: `X-User-Id: <seller_uuid>`, `X-User-Roles: seller`)*
-* **Mô tả:** Khai báo thông tin mô tả, danh mục, thông số kỹ thuật (dạng danh sách cặp `{ name, value }`) và các biến thể ban đầu.
-* **Lưu ý:** Sản phẩm tạo mới luôn ở trạng thái `Draft` và **hoàn toàn không gọi sang kho Fulfillment**.
-
-#### Request Body Mẫu (`POST /api/v1/products`):
-```json
-{
-  "categoryId": "10000000-0000-0000-0000-000000000001",
-  "name": "Bàn Phím Cơ Không Dây Nexus RGB V2",
-  "brand": "Nexus Tech",
-  "description": "Bàn phím cơ Bluetooth 5.1 hotswap 3 modes kết nối.",
-  "saleType": "Regular",
-  "specifications": [
-    { "name": "Switch Type", "value": "Gateron Yellow Pro" },
-    { "name": "Kết nối", "value": "Bluetooth 5.1 / 2.4Ghz / Type-C" },
-    { "name": "Dung lượng pin", "value": "4000mAh" }
-  ],
-  "variants": [
-    {
-      "skuCode": "KB-NEXUS-01-WHITE",
-      "name": "Màu Trắng - Gateron Yellow",
-      "price": 1250000,
-      "currency": "VND",
-      "attributes": [
-        { "attrName": "Màu sắc", "attrValue": "Trắng" },
-        { "attrName": "Switch", "attrValue": "Yellow" }
-      ]
-    },
-    {
-      "skuCode": "KB-NEXUS-01-BLACK",
-      "name": "Màu Đen - Gateron Red",
-      "price": 1290000,
-      "currency": "VND",
-      "attributes": [
-        { "attrName": "Màu sắc", "attrValue": "Đen" },
-        { "attrName": "Switch", "attrValue": "Red" }
-      ]
-    }
-  ]
-}
-```
-
-#### Response Body Mẫu (`201 Created`):
-```json
-{
-  "id": "294b5b66-9700-4697-a471-301706b838c6",
-  "sellerId": "cccccccc-3333-3333-3333-333333333333",
-  "categoryId": "10000000-0000-0000-0000-000000000001",
-  "name": "Bàn Phím Cơ Không Dây Nexus RGB V2",
-  "status": "Draft"
-}
-```
-
-> **Lưu ý:**
-> - Lưu lại `id` của sản phẩm (`productId`) từ response.
-> - Trường `specifications` nhận mảng các object `{ "name": "...", "value": "..." }` (tối đa 30 mục), không còn dùng chuỗi JSON thô.
-> - Nếu muốn thêm biến thể sau khi đã tạo sản phẩm, gọi API: `POST /api/v1/products/{id}/variants`.
+* **Endpoint:** `POST /api/v1/products` (Catalog Service - Port `8002`)
+* **Xác thực:** Header `Authorization: Bearer <seller_token>` *(hoặc `X-User-Id` / `X-User-Roles` khi chạy dev)*.
+* **Mục đích:** Khởi tạo bản ghi sản phẩm trên hệ thống ở trạng thái sơ khởi `Draft`.
+* **Phân định dữ liệu:**
+  * **Bắt buộc:** Tên sản phẩm (`name`) và Mã danh mục (`categoryId`).
+  * **Tùy chọn:** Thương hiệu (`brand`), Mô tả chi tiết (`description`), Danh sách thông số kỹ thuật (`specifications`), Danh sách biến thể ban đầu (`variants`).
+  * **Không gửi:** `saleType` và `sellerId`.
+* **Hành vi Backend:**
+  * Lưu sản phẩm vào cơ sở dữ liệu với trạng thái `Draft`.
+  * **Không gọi sang dịch vụ kho Fulfillment** ở bước này để tránh phát sinh dữ liệu kho rác khi sản phẩm chưa hoàn thiện thông tin.
+* **Xử lý sau khi gọi thành công:**
+  * Nhận mã định danh sản phẩm (`productId` / `id`) từ response để tiếp tục cho các bước tải ảnh và kích hoạt.
+* 🔗 **Chi tiết hợp đồng Request/Response:** Xem tại [POST /api/v1/products](api/Products/POST_products.md).
 
 ---
 
-### BƯỚC 2: Tải Lên Hình Ảnh Sản Phẩm & Biến Thể
+### BƯỚC 2: Thêm Biến Thể & Tải Lên Hình Ảnh
 
+#### 2.1. Thêm biến thể cho sản phẩm (Nếu dùng luồng Wizard nhiều bước):
+* **Endpoint:** `POST /api/v1/products/{productId}/variants` (Catalog Service)
+* **Mục đích:** Thêm từng biến thể/SKU (mã SKU, tên biến thể, giá bán, các thuộc tính như Màu sắc, Kích cỡ).
+* 🔗 **Chi tiết hợp đồng Request/Response:** Xem tại [POST /api/v1/products/{id}/variants](api/Variants/POST_products_id_variants.md).
+
+#### 2.2. Tải lên hình ảnh sản phẩm & biến thể:
 * **Endpoint:** `POST /api/v1/products/{productId}/images` (Catalog Service)
-* **Content-Type:** `multipart/form-data`
-* **Phân biệt 2 loại ảnh:**
-  1. **Ảnh đại diện sản phẩm (Product Images):**
-     * **BẮT BUỘC:** Sản phẩm **phải có ít nhất 1 ảnh active (`isActive = true`)** thì mới đủ điều kiện kích hoạt sang `ACTIVE`.
-     * Request: `file`, `isActive = true`, `sortOrder = 0`, `altText = "Ảnh chính sản phẩm"`.
-  2. **Ảnh riêng của từng biến thể (Variant Images):**
-     * **KHÔNG BẮT BUỘC (Optional):** Tùy chọn dành cho các biến thể có màu sắc hoặc phiên bản riêng biệt.
-     * Request: bổ sung thêm tham số `variantId = "<variant_uuid>"`.
+* **Định dạng dữ liệu:** `multipart/form-data`
+* **Quy tắc phân biệt 2 loại ảnh:**
+  1. **Ảnh đại diện chung của sản phẩm (Product Image):**
+     * **BẮT BUỘC:** Sản phẩm **phải có ít nhất 1 ảnh active** mới đủ điều kiện kích hoạt mở bán.
+     * Tải file kèm tham số `isActive = true`, `sortOrder = 0`.
+  2. **Ảnh riêng cho từng biến thể (Variant Image):**
+     * **KHÔNG BẮT BUỘC (Tùy chọn):** Dành riêng cho các biến thể có màu sắc hoặc hình thức khác nhau.
+     * Tải file kèm tham số `variantId`.
+* 🔗 **Chi tiết hợp đồng Request/Response:** Xem tại [POST /api/v1/products/{id}/images](api/Images/POST_products_id_images.md).
 
 ---
 
-### BƯỚC 3: Kích Hoạt Mở Bán Sản Phẩm (`DRAFT` $\to$ `ACTIVE`)
+### BƯỚC 3: Kích Hoạt Đăng Bán Sản Phẩm (`DRAFT` $\to$ `ACTIVE`)
 
 * **Endpoint:** `PATCH /api/v1/products/{productId}/status` (Catalog Service)
-* **Mục đích:** Đưa sản phẩm lên sàn mở bán.
-* **Xử lý tự động tại Backend (2 chặng liên service):**
-  1. *Chặng 1 (Xác định kho của Seller):* Backend Catalog gọi `GET /api/v1/warehouses/seller/{sellerId}` sang Fulfillment Service để tìm đúng ID kho đang active của Seller (`targetWarehouseId`). Nếu Seller chưa từng tạo kho riêng, hệ thống tự động fallback lấy kho trung tâm của sàn qua `GET /api/v1/warehouses`.
-  2. *Chặng 2 (Tạo SKU tại đúng kho đó):* Gọi `POST /api/v1/inventories/initialize` để khai báo SKU đúng vào `targetWarehouseId` với số lượng ban đầu là **`0`** (`initialQuantity: 0`).
-  * Chạy trong Database Transaction: nếu Fulfillment Service lỗi hoặc không khả dụng, hệ thống sẽ tự động rollback trạng thái về `Draft` và trả về `502 Bad Gateway`.
-* **Lưu ý Frontend:** **Không kiểm tra tồn kho trước khi gửi request này**.
-
-#### Request Body Mẫu (`PATCH /api/v1/products/{productId}/status`):
-```json
-{
-  "status": "Active",
-  "statusReason": "Khai báo hoàn tất và sẵn sàng kinh doanh."
-}
-```
-
-#### Các mã lỗi Frontend cần xử lý:
-| HTTP Status | Error Code | Lý do & Cách thông báo trên UI |
-| :---: | :--- | :--- |
-| `400 Bad Request` | `VAL_NO_ACTIVE_IMAGES` | **Chưa có ảnh đại diện:** *"Vui lòng tải lên ít nhất 1 hình ảnh sản phẩm trước khi đăng bán."* |
-| `400 Bad Request` | `VAL_NO_ACTIVE_VARIANTS` | **Chưa có biến thể:** *"Vui lòng tạo ít nhất 1 biến thể hàng hóa trước khi đăng bán."* |
-| `502 Bad Gateway` | `FULFILLMENT_UNAVAILABLE` | **Lỗi dịch vụ kho:** *"Dịch vụ kho hàng tạm thời không khả dụng. Vui lòng thử lại sau giây lát."* |
+* **Dữ liệu gửi lên:** Chuyển trạng thái sang `Active`.
+* **Điều kiện tiên quyết kiểm tra tại Backend Catalog:**
+  1. Sản phẩm có ít nhất 1 hình ảnh active (`VAL_NO_ACTIVE_IMAGES`).
+  2. Sản phẩm có ít nhất 1 biến thể active với giá bán hợp lệ > 0 (`VAL_NO_ACTIVE_VARIANTS`).
+* **Hành vi tự động của Catalog Service:**
+  * Catalog Service tự động thông báo sang dịch vụ kho để đăng ký các mã SKU với số lượng khởi tạo mặc định bằng `0`.
+* **Lưu ý đặc biệt cho Frontend:**
+  * **KHÔNG kiểm tra tồn kho** trên giao diện trước khi gửi request này.
+  * Nếu dịch vụ kho tạm thời chưa sẵn sàng hoặc lỗi kết nối, backend sẽ phản hồi mã lỗi `502 Bad Gateway` (`FULFILLMENT_UNAVAILABLE`). Frontend hiển thị thông báo thân thiện để người dùng thử lại sau.
+* 🔗 **Chi tiết hợp đồng Request/Response:** Xem tại [PATCH /api/v1/products/{id}/status](api/Products/PATCH_products_id_status.md).
 
 ---
 
-### BƯỚC 4: Nhập Kho Hàng Thực Tế (Fulfillment Service API)
+### BƯỚC 4: Quy Trình Nhập Kho Hàng Thực Tế (Phạm Vi Fulfillment Service)
 
-Sau khi sản phẩm đã chuyển sang `ACTIVE`, toàn bộ biến thể đã tồn tại trong hệ thống kho với số lượng là `0` (trên trang Buyer hiển thị trạng thái *"Tạm hết hàng"*).
-
-Để cập nhật số lượng hàng thực tế, Frontend gọi trực tiếp API điều chỉnh / nhập kho của **Fulfillment Service**:
-
-* **Endpoint:** `POST /api/v1/inventories/adjust` (Fulfillment Service - Port `8006`)
-* **Headers:**
-  * `Authorization: Bearer <seller_token>`
-  * *(Hoặc khi dev: `X-User-Id: <seller_uuid>`, `X-User-Roles: seller`)*
-* **Mục đích:** Ghi nhận số lượng hàng thực tế nhập vào kho theo từng mã SKU/Biến thể (`skuId` / `variantId`).
-
-#### Request Body Mẫu (`POST /api/v1/inventories/adjust`):
-```json
-{
-  "skuId": "2ee975ad-876a-456a-8a3f-c06cdc716ff9",
-  "sellerId": "cccccccc-3333-3333-3333-333333333333",
-  "quantity": 100,
-  "reason": "Nhập kho lô hàng đầu tiên từ nhà máy",
-  "referenceCode": "PO-20261106-001"
-}
-```
-
-#### Tra Cứu Tồn Kho Sau Khi Nhập:
-* **Endpoint:** `GET /api/v1/inventories/{variantId}` (Fulfillment Service)
-* **Response Body Mẫu (`200 OK`):**
-```json
-{
-  "skuId": "2ee975ad-876a-456a-8a3f-c06cdc716ff9",
-  "sellerId": "cccccccc-3333-3333-3333-333333333333",
-  "totalQuantity": 100,
-  "availableQuantity": 100,
-  "reservedQuantity": 0
-}
-```
-* **Hiển thị Buyer:** Khi `availableQuantity > 0`, sản phẩm sẽ tự động hiển thị nút **"Mua ngay" / "Thêm vào giỏ hàng"**.
+> [!NOTE]
+> **LƯU Ý VỀ RANH GIỚI DỊCH VỤ:**  
+> - Sau khi Bước 3 hoàn tất tại Catalog Service, sản phẩm đã chính thức mở bán trên sàn nhưng các biến thể có tồn kho khả dụng bằng `0` (trên trang Buyer sẽ hiển thị trạng thái *"Tạm hết hàng"*).  
+> - Việc nhập số lượng hàng thực tế vào kho để chuyển sản phẩm sang trạng thái có hàng bán **thuộc phạm vi quản lý riêng của Fulfillment Service**.  
+> - Frontend vui lòng tham khảo tài liệu hướng dẫn và đặc tả API chính thức từ đội ngũ phát triển Fulfillment Service để tích hợp tính năng nhập kho / điều chỉnh tồn kho cho Seller. Catalog Service không sở hữu và không quyết định các API này.
 
 ---
 
-## 3. Bảng Tổng Hợp Endpoint & Dịch Vụ Phụ Trách
+## 4. Bảng Tổng Hợp Endpoint Của Catalog Service
 
-| Hành động của Seller | Dịch vụ phụ trách | Method | Endpoint | Bắt buộc / Tùy chọn |
-| :--- | :--- | :---: | :--- | :---: |
-| 1. Tạo sản phẩm bản nháp | **Catalog Service** | `POST` | `/api/v1/products` | Bắt buộc |
-| 2. Thêm biến thể lẻ (nếu có) | **Catalog Service** | `POST` | `/api/v1/products/{id}/variants` | Tùy chọn |
-| 3. Tải ảnh đại diện sản phẩm | **Catalog Service** | `POST` | `/api/v1/products/{id}/images` | **Bắt buộc** (Ít nhất 1 ảnh) |
-| 4. Tải ảnh cho từng biến thể | **Catalog Service** | `POST` | `/api/v1/products/{id}/images` *(kèm variantId)* | **Không bắt buộc** (Tùy chọn) |
-| 5. Đăng bán sản phẩm (`Active`) | **Catalog Service** | `PATCH` | `/api/v1/products/{id}/status` | Bắt buộc *(Tự động gán kho Qty = 0)* |
-| 6. Nhập hàng thực tế vào kho | **Fulfillment Service**| `POST` | `/api/v1/inventories/adjust` | Bắt buộc để có hàng bán |
-| 7. Tra cứu tồn kho biến thể | **Fulfillment Service**| `GET` | `/api/v1/inventories/{variantId}` | Phục vụ hiển thị tồn kho |
+| Thao tác trên giao diện | Dịch vụ phụ trách | Method | Endpoint | Bắt buộc / Tùy chọn | Tài liệu chi tiết |
+| :--- | :--- | :---: | :--- | :---: | :--- |
+| **1. Khởi tạo sản phẩm bản nháp** | Catalog Service | `POST` | `/api/v1/products` | **Bắt buộc** | [POST_products.md](api/Products/POST_products.md) |
+| **2. Thêm biến thể cho sản phẩm** | Catalog Service | `POST` | `/api/v1/products/{id}/variants` | Tùy chọn (nếu tách bước) | [POST_products_id_variants.md](api/Variants/POST_products_id_variants.md) |
+| **3. Tải ảnh đại diện sản phẩm** | Catalog Service | `POST` | `/api/v1/products/{id}/images` | **Bắt buộc** (Tối thiểu 1 ảnh) | [POST_products_id_images.md](api/Images/POST_products_id_images.md) |
+| **4. Tải ảnh riêng của biến thể** | Catalog Service | `POST` | `/api/v1/products/{id}/images` | Tùy chọn | [POST_products_id_images.md](api/Images/POST_products_id_images.md) |
+| **5. Đăng bán sản phẩm (`Active`)** | Catalog Service | `PATCH` | `/api/v1/products/{id}/status` | **Bắt buộc** *(Khởi tạo SKU Qty = 0)* | [PATCH_products_id_status.md](api/Products/PATCH_products_id_status.md) |
+| **6. Nhập kho hàng thực tế** | **Fulfillment Service** | — | — | Phụ thuộc Fulfillment | *Tham khảo tài liệu API riêng của Fulfillment Service* |

@@ -10,7 +10,12 @@ public sealed record ProductDto(
     string Name,
     string? Description,
     string? Brand,
-    string Status);
+    string Status,
+    int? WeightGrams = null)
+{
+    public ProductDto(Guid id, Guid sellerId, Guid categoryId, string name, string? description, string? brand, string status)
+        : this(id, sellerId, categoryId, name, description, brand, status, null) { }
+}
 
 public sealed record ProductListItemDto(
     Guid ProductId,
@@ -36,7 +41,21 @@ public sealed record ProductDetailVariantDto(
     bool IsActive,
     IReadOnlyList<ProductVariantAttributeDto> Attributes,
     string? PrimaryImageUrl = null,
-    IReadOnlyList<ProductImageDto>? Images = null);
+    IReadOnlyList<ProductImageDto>? Images = null,
+    int? WeightGrams = null)
+{
+    public ProductDetailVariantDto(
+        Guid variantId,
+        string skuCode,
+        string name,
+        decimal? price,
+        string status,
+        bool isActive,
+        IReadOnlyList<ProductVariantAttributeDto> attributes,
+        string? primaryImageUrl,
+        IReadOnlyList<ProductImageDto>? images)
+        : this(variantId, skuCode, name, price, status, isActive, attributes, primaryImageUrl, images, null) { }
+}
 
 public sealed record ProductDetailImageDto(
     Guid ImageId,
@@ -69,7 +88,25 @@ public sealed record ProductDetailDto(
     ProductDetailCategoryDto? Category,
     IReadOnlyList<ProductDetailVariantDto> Variants,
     IReadOnlyList<ProductDetailImageDto> Images,
-    ProductDetailRatingDto Rating);
+    ProductDetailRatingDto Rating,
+    int? WeightGrams = null)
+{
+    public ProductDetailDto(
+        Guid productId,
+        Guid sellerId,
+        string name,
+        string? description,
+        string? brand,
+        string saleType,
+        string status,
+        IReadOnlyList<ProductSpecificationDto>? specifications,
+        DateTimeOffset? publishedAt,
+        ProductDetailCategoryDto? category,
+        IReadOnlyList<ProductDetailVariantDto> variants,
+        IReadOnlyList<ProductDetailImageDto> images,
+        ProductDetailRatingDto rating)
+        : this(productId, sellerId, name, description, brand, saleType, status, specifications, publishedAt, category, variants, images, rating, null) { }
+}
 
 public sealed record ProductImageDto(
     Guid Id,
@@ -96,7 +133,8 @@ public sealed record VariantDetailDto(
     bool IsPurchasable,
     IReadOnlyList<ProductVariantAttributeDto> Attributes,
     string? PrimaryImageUrl = null,
-    IReadOnlyList<ProductImageDto>? Images = null);
+    IReadOnlyList<ProductImageDto>? Images = null,
+    int? WeightGrams = null);
 
 public sealed record SellerProductListItemDto(
     Guid ProductId,
@@ -126,7 +164,8 @@ public sealed record SellerProductVariantDto(
     bool IsActive,
     bool HasOrder,
     IReadOnlyList<ProductVariantAttributeDto> Attributes,
-    IReadOnlyList<ProductImageDto> Images);
+    IReadOnlyList<ProductImageDto> Images,
+    int? WeightGrams = null);
 
 public sealed record SellerProductDetailDto(
     Guid ProductId,
@@ -145,7 +184,8 @@ public sealed record SellerProductDetailDto(
     DateTimeOffset? UpdatedAt,
     DateTimeOffset? PublishedAt,
     IReadOnlyList<ProductImageDto> Images,
-    IReadOnlyList<SellerProductVariantDto> Variants);
+    IReadOnlyList<SellerProductVariantDto> Variants,
+    int? WeightGrams = null);
 
 public sealed record BatchVariantItemDto(
     Guid VariantId,
@@ -161,7 +201,8 @@ public sealed record BatchVariantItemDto(
     string SaleType,
     string? PrimaryImageUrl,
     IReadOnlyList<ProductVariantAttributeDto> Attributes,
-    bool IsPurchasable);
+    bool IsPurchasable,
+    int? WeightGrams = null);
 
 public sealed record BatchVariantResponse(
     IReadOnlyList<BatchVariantItemDto> Items,
@@ -184,7 +225,6 @@ public sealed record CheckVariantStatusResponse(
     IReadOnlyList<VariantStatusItemDto> Items,
     IReadOnlyList<Guid> NotFoundIds);
 
-
 public sealed record ValidateVariantSwitchResponse(
     bool IsValid,
     Guid ProductId,
@@ -193,4 +233,20 @@ public sealed record ValidateVariantSwitchResponse(
     string NewSkuName,
     decimal NewUnitPrice,
     bool IsPurchasable,
-    int WeightGrams = 200);
+    int? WeightGrams = null);
+
+public sealed record AdminProductListItemDto(
+    Guid ProductId,
+    Guid SellerId,
+    Guid CategoryId,
+    string CategoryName,
+    string Name,
+    string? Brand,
+    string SaleType,
+    string Status,
+    string? StatusReason,
+    decimal? MinPrice,
+    decimal? MaxPrice,
+    string? PrimaryImageUrl,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? PublishedAt);

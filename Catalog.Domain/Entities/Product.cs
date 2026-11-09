@@ -14,6 +14,7 @@ public class Product : AuditableEntity<Guid>
     public required ProductStatus Status { get; set; } = ProductStatus.Draft;
     public ProductInactiveReason? StatusReason { get; set; }
     public string? Specifications { get; set; }
+    public int? WeightGrams { get; set; }
     public DateTimeOffset? PublishedAt { get; set; }
 
     // Navigation

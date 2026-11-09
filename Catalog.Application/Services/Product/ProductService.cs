@@ -21,15 +21,18 @@ public sealed class ProductService : IProductService
     private readonly ICatalogDbContext _dbContext;
     private readonly IFulfillmentClient _fulfillmentClient;
     private readonly IImageStorageService _imageStorageService;
+    private readonly IUserClient _userClient;
 
     public ProductService(
         ICatalogDbContext dbContext,
         IFulfillmentClient fulfillmentClient,
-        IImageStorageService imageStorageService)
+        IImageStorageService imageStorageService,
+        IUserClient userClient)
     {
         _dbContext = dbContext;
         _fulfillmentClient = fulfillmentClient;
         _imageStorageService = imageStorageService;
+        _userClient = userClient;
     }
 
     // -------------------------------------------------------------
@@ -50,7 +53,8 @@ public sealed class ProductService : IProductService
             product.Name,
             product.Description,
             product.Brand,
-            product.Status.ToString());
+            product.Status.ToString(),
+            product.WeightGrams);
     }
 
     public async Task<PagedData<ProductDto>> ListAsync(int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
@@ -74,7 +78,8 @@ public sealed class ProductService : IProductService
                 product.Name,
                 product.Description,
                 product.Brand,
-                product.Status.ToString()))
+                product.Status.ToString(),
+                product.WeightGrams))
             .ToListAsync(cancellationToken);
 
         return new PagedData<ProductDto>(products, PaginationMetadata.Create(safePage, safePageSize, totalCount));
@@ -201,6 +206,7 @@ public sealed class ProductService : IProductService
                 SaleType = p.SaleType.ToString(),
                 Status = p.Status.ToString(),
                 p.Specifications,
+                p.WeightGrams,
                 p.PublishedAt,
                 Category = p.Category == null ? null : new ProductDetailCategoryDto(
                     p.Category.Id,
@@ -218,7 +224,8 @@ public sealed class ProductService : IProductService
                     p.Images.Where(i => !i.IsDeleted && i.VariantId == v.Id && i.IsActive).OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault()
                         ?? p.Images.Where(i => !i.IsDeleted && i.IsActive).OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault()
                         ?? DefaultImageUrl,
-                    p.Images.Where(i => !i.IsDeleted && i.VariantId == v.Id).OrderBy(i => i.SortOrder).Select(i => new ProductImageDto(i.Id, i.ProductId, i.VariantId, i.Url, i.AltText, i.IsActive, i.SortOrder)).ToList()
+                    p.Images.Where(i => !i.IsDeleted && i.VariantId == v.Id).OrderBy(i => i.SortOrder).Select(i => new ProductImageDto(i.Id, i.ProductId, i.VariantId, i.Url, i.AltText, i.IsActive, i.SortOrder)).ToList(),
+                    v.WeightGrams ?? p.WeightGrams
                 )).ToList(),
                 Images = p.Images.Where(i => !i.IsDeleted).OrderBy(i => i.SortOrder).Select(i => new ProductDetailImageDto(
                     i.Id,
@@ -249,7 +256,36 @@ public sealed class ProductService : IProductService
             row.Category,
             row.Variants,
             row.Images,
-            row.Rating);
+            row.Rating,
+            row.WeightGrams);
+    }
+
+    private async Task ValidateSellerPermissionAsync(Guid sellerId, CancellationToken cancellationToken)
+    {
+        var permission = await _userClient.CheckPermissionAsync(sellerId, "sell", cancellationToken);
+        if (permission != null && !permission.IsAllowed)
+        {
+            var reason = permission.Reason?.ToLowerInvariant() ?? string.Empty;
+            if (reason.Contains("suspend"))
+            {
+                throw new BusinessRuleValidationException(
+                    "SELLER_SUSPENDED",
+                    "Seller profile is temporarily suspended.",
+                    403);
+            }
+            if (reason.Contains("profile") || reason.Contains("no seller") || reason.Contains("not approved"))
+            {
+                throw new BusinessRuleValidationException(
+                    "NO_SELLER_PROFILE",
+                    "User does not have an approved seller profile.",
+                    403);
+            }
+
+            throw new BusinessRuleValidationException(
+                "SELLER_RESTRICTED",
+                "Seller account has an active restriction prohibiting selling actions.",
+                403);
+        }
     }
 
     public async Task<ProductDto> CreateAsync(CreateProductRequest request, CancellationToken cancellationToken = default)
@@ -262,6 +298,13 @@ public sealed class ProductService : IProductService
         if (request.SellerId == Guid.Empty)
         {
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Seller ID cannot be empty.");
+        }
+
+        await ValidateSellerPermissionAsync(request.SellerId, cancellationToken);
+
+        if (request.WeightGrams.HasValue && request.WeightGrams.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WeightGrams must be greater than 0.");
         }
 
         var trimmedName = request.Name.Trim();
@@ -278,6 +321,11 @@ public sealed class ProductService : IProductService
         if (request.Description != null && request.Description.Trim().Length > 4000)
         {
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Description cannot exceed 4000 characters.");
+        }
+
+        if (request.WeightGrams.HasValue && request.WeightGrams.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WeightGrams must be greater than 0.");
         }
 
         var category = await _dbContext.Categories
@@ -311,6 +359,7 @@ public sealed class ProductService : IProductService
             SaleType = request.SaleType,
             Status = ProductStatus.Draft,
             Specifications = ProductSpecificationHelper.ValidateAndSerialize(request.Specifications),
+            WeightGrams = request.WeightGrams,
             CreatedAt = now,
             UpdatedAt = now,
             CreatedBy = request.SellerId,
@@ -321,7 +370,6 @@ public sealed class ProductService : IProductService
         _dbContext.Products.Add(product);
 
         var isAuction = request.SaleType == SaleType.Auction;
-        var variantsToDeclare = new List<(ProductVariant Variant, int Quantity)>();
 
         if (isAuction)
         {
@@ -355,6 +403,7 @@ public sealed class ProductService : IProductService
                 IsActive = true,
                 HasOrder = false,
                 Status = VariantStatus.Active,
+                WeightGrams = request.WeightGrams,
                 CreatedAt = now,
                 UpdatedAt = now,
                 CreatedBy = request.SellerId,
@@ -412,9 +461,9 @@ public sealed class ProductService : IProductService
                     throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Price must be greater than 0 for all regular product variants.");
                 }
 
-                if (v.Quantity < 0)
+                if (v.WeightGrams.HasValue && v.WeightGrams.Value <= 0)
                 {
-                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Quantity must be greater than or equal to 0.");
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"WeightGrams for variant '{v.SkuCode}' must be greater than 0.");
                 }
 
                 var variant = new ProductVariant
@@ -428,6 +477,7 @@ public sealed class ProductService : IProductService
                     IsActive = (i == 0),
                     HasOrder = false,
                     Status = VariantStatus.Active,
+                    WeightGrams = v.WeightGrams ?? request.WeightGrams,
                     CreatedAt = now,
                     UpdatedAt = now,
                     CreatedBy = request.SellerId,
@@ -450,7 +500,6 @@ public sealed class ProductService : IProductService
                 }
 
                 _dbContext.ProductVariants.Add(variant);
-                variantsToDeclare.Add((variant, v.Quantity));
             }
         }
 
@@ -461,41 +510,7 @@ public sealed class ProductService : IProductService
             newValues: new { product.Name, product.SellerId, product.CategoryId, product.SaleType },
             userId: request.SellerId.ToString());
 
-        using (var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken))
-        {
-            try
-            {
-                await _dbContext.SaveChangesAsync(cancellationToken);
-
-                // Initialize physical warehouse inventory for Regular products (Hard-fail)
-                if (!isAuction && variantsToDeclare.Count > 0)
-                {
-                    foreach (var (variant, qty) in variantsToDeclare)
-                    {
-                        var invResult = await _fulfillmentClient.InitializeInventoryForSkuAsync(
-                            variant.Id,
-                            product.SellerId,
-                            qty,
-                            cancellationToken);
-
-                        if (invResult == null)
-                        {
-                            throw new DomainException(
-                                "FULFILLMENT_UNAVAILABLE",
-                                $"Cannot initialize inventory for SKU '{variant.SkuCode}'. Fulfillment service is unavailable or returned an error.",
-                                502);
-                        }
-                    }
-                }
-
-                await transaction.CommitAsync(cancellationToken);
-            }
-            catch
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                throw;
-            }
-        }
+        await _dbContext.SaveChangesAsync(cancellationToken);
 
         return new ProductDto(
             product.Id,
@@ -504,7 +519,8 @@ public sealed class ProductService : IProductService
             product.Name,
             product.Description,
             product.Brand,
-            product.Status.ToString());
+            product.Status.ToString(),
+            product.WeightGrams);
     }
 
     public async Task<ProductDto> CreateAuctionProductAsync(CreateAuctionProductRequest request, Guid currentUserId, CancellationToken cancellationToken = default)
@@ -519,9 +535,16 @@ public sealed class ProductService : IProductService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Seller ID cannot be empty.");
         }
 
+        await ValidateSellerPermissionAsync(currentUserId, cancellationToken);
+
         if (request.SellerId.HasValue && request.SellerId.Value != Guid.Empty && request.SellerId.Value != currentUserId)
         {
             throw new BusinessRuleValidationException("FORBIDDEN", "You cannot create products on behalf of another seller.", 403);
+        }
+
+        if (request.WeightGrams.HasValue && request.WeightGrams.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WeightGrams must be greater than 0.");
         }
 
         var trimmedName = request.Name.Trim();
@@ -561,6 +584,7 @@ public sealed class ProductService : IProductService
             SaleType = SaleType.Auction,
             Status = ProductStatus.Draft,
             Specifications = ProductSpecificationHelper.ValidateAndSerialize(request.Specifications),
+            WeightGrams = request.WeightGrams,
             CreatedAt = now,
             UpdatedAt = now,
             CreatedBy = currentUserId,
@@ -583,6 +607,7 @@ public sealed class ProductService : IProductService
             IsActive = true,
             HasOrder = false,
             Status = VariantStatus.Active,
+            WeightGrams = request.WeightGrams,
             CreatedAt = now,
             UpdatedAt = now,
             CreatedBy = currentUserId,
@@ -609,7 +634,8 @@ public sealed class ProductService : IProductService
             product.Name,
             product.Description,
             product.Brand,
-            product.Status.ToString());
+            product.Status.ToString(),
+            product.WeightGrams);
     }
 
     public async Task<ProductDto> UpdateAsync(Guid id, UpdateProductRequest request, Guid currentUserId, CancellationToken cancellationToken = default)
@@ -621,6 +647,16 @@ public sealed class ProductService : IProductService
         if (product.SellerId != currentUserId)
         {
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to modify this product.", 403);
+        }
+
+        if (product.Status == ProductStatus.InAuction)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_IN_AUCTION", "Product is currently in an active auction and cannot be modified.");
+        }
+
+        if (product.Status == ProductStatus.Auctioned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_AUCTIONED", "Auctioned products cannot be modified.");
         }
 
         if (string.IsNullOrWhiteSpace(request?.Name))
@@ -714,7 +750,8 @@ public sealed class ProductService : IProductService
             product.Name,
             product.Description,
             product.Brand,
-            product.Status.ToString());
+            product.Status.ToString(),
+            product.WeightGrams);
     }
 
     public async Task<ProductDto> ChangeStatusAsync(Guid id, ChangeProductStatusRequest request, Guid currentUserId, CancellationToken cancellationToken = default)
@@ -722,7 +759,7 @@ public sealed class ProductService : IProductService
         if (string.IsNullOrWhiteSpace(request?.Status) ||
             !Enum.TryParse<ProductStatus>(request.Status, true, out var newStatus))
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Invalid status value. Allowed values are DRAFT, ACTIVE, INACTIVE.");
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Invalid status value. Allowed values are DRAFT, ACTIVE, INACTIVE, AUCTIONED.");
         }
 
         var product = await _dbContext.Products
@@ -736,8 +773,22 @@ public sealed class ProductService : IProductService
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to modify this product.", 403);
         }
 
+        if (product.Status == ProductStatus.InAuction)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_IN_AUCTION", "Product is currently in an active auction and cannot change status.");
+        }
+
+        if (product.Status == ProductStatus.Auctioned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_AUCTIONED", "Auctioned products are permanently locked and cannot change status.");
+        }
+
         if (newStatus == ProductStatus.Active)
         {
+            if (product.StatusReason == ProductInactiveReason.AdminLocked)
+            {
+                throw new BusinessRuleValidationException("PRODUCT_LOCKED_BY_ADMIN", "This product was suspended by administrator and cannot be reactivated by seller. Please contact support.");
+            }
             var hasActiveVariant = product.Variants.Any(v => !v.IsDeleted && v.Status == VariantStatus.Active && (product.SaleType == SaleType.Auction || (v.Price.HasValue && v.Price.Value > 0)));
             if (!hasActiveVariant)
             {
@@ -748,6 +799,29 @@ public sealed class ProductService : IProductService
             if (!hasActiveImage)
             {
                 throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot activate product without at least one active product image.");
+            }
+
+            if (product.SaleType == SaleType.Auction)
+            {
+                if (!product.WeightGrams.HasValue || product.WeightGrams.Value <= 0)
+                {
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot activate auction product without valid shipping weight. Product must declare WeightGrams greater than 0.");
+                }
+            }
+            else
+            {
+                var productHasWeight = product.WeightGrams.HasValue && product.WeightGrams.Value > 0;
+                if (!productHasWeight)
+                {
+                    var variantsMissingWeight = product.Variants
+                        .Where(v => !v.IsDeleted && v.Status == VariantStatus.Active)
+                        .Any(v => !v.WeightGrams.HasValue || v.WeightGrams.Value <= 0);
+
+                    if (variantsMissingWeight)
+                    {
+                        throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot activate product without valid shipping weight. Either declare WeightGrams on product or provide WeightGrams greater than 0 for all active variants.");
+                    }
+                }
             }
 
             product.PublishedAt ??= DateTimeOffset.UtcNow;
@@ -765,6 +839,23 @@ public sealed class ProductService : IProductService
         else if (newStatus == ProductStatus.Draft)
         {
             product.StatusReason = null;
+        }
+        else if (newStatus == ProductStatus.Auctioned)
+        {
+            if (product.SaleType != SaleType.Auction)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Only auction products can transition to Auctioned status.");
+            }
+            if (product.Status != ProductStatus.Active)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Only active auction products can transition to Auctioned status.");
+            }
+
+            product.StatusReason = null;
+            foreach (var v in product.Variants.Where(v => !v.IsDeleted))
+            {
+                v.Status = VariantStatus.Inactive;
+            }
         }
 
         var oldStatus = product.Status;
@@ -813,7 +904,8 @@ public sealed class ProductService : IProductService
             product.Name,
             product.Description,
             product.Brand,
-            product.Status.ToString());
+            product.Status.ToString(),
+            product.WeightGrams);
     }
 
     public async Task<bool> SoftDeleteAsync(Guid id, Guid currentUserId, CancellationToken cancellationToken = default)
@@ -826,6 +918,16 @@ public sealed class ProductService : IProductService
         if (product.SellerId != currentUserId)
         {
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to delete this product.", 403);
+        }
+
+        if (product.Status == ProductStatus.InAuction)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_IN_AUCTION", "Product is currently in an active auction and cannot be deleted.");
+        }
+
+        if (product.Status == ProductStatus.Auctioned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_AUCTIONED", "Auctioned products cannot be deleted.");
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -1010,6 +1112,11 @@ public sealed class ProductService : IProductService
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to delete this image.", 403);
         }
 
+        if (image.Product.Status == ProductStatus.InAuction || image.Product.Status == ProductStatus.Auctioned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_IN_AUCTION", "Cannot delete images of a product that is currently in auction or already auctioned.");
+        }
+
         var remainingImagesCount = await _dbContext.ProductImages
             .CountAsync(i => i.ProductId == image.ProductId && i.Id != imageId && !i.IsDeleted, cancellationToken);
 
@@ -1153,7 +1260,8 @@ public sealed class ProductService : IProductService
             isPurchasable,
             variant.Attributes.Select(a => new ProductVariantAttributeDto(a.AttrName, a.AttrValue)).ToList(),
             primaryImageUrl,
-            vImages
+            vImages,
+            variant.WeightGrams ?? variant.Product?.WeightGrams
         );
     }
 
@@ -1287,6 +1395,11 @@ public sealed class ProductService : IProductService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot add variants to an auction product. Auction products only support a single fixed variant.");
         }
 
+        if (product.Status == ProductStatus.Auctioned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_AUCTIONED", "Cannot add variants to an auctioned product.");
+        }
+
         var currentVariantCount = product.Variants.Count(v => !v.IsDeleted);
         if (currentVariantCount >= 10)
         {
@@ -1315,9 +1428,9 @@ public sealed class ProductService : IProductService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Price must be greater than 0.");
         }
 
-        if (request.Quantity < 0)
+        if (request.WeightGrams.HasValue && request.WeightGrams.Value <= 0)
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Quantity must be greater than or equal to 0.");
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WeightGrams must be greater than 0.");
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -1334,6 +1447,7 @@ public sealed class ProductService : IProductService
             IsActive = !hasActiveDefault,
             HasOrder = false,
             Status = VariantStatus.Active,
+            WeightGrams = request.WeightGrams ?? product.WeightGrams,
             CreatedAt = now,
             UpdatedAt = now,
             CreatedBy = currentUserId,
@@ -1362,13 +1476,13 @@ public sealed class ProductService : IProductService
                 _dbContext.ProductVariants.Add(variant);
                 await _dbContext.SaveChangesAsync(cancellationToken);
 
-                // Initialize physical inventory for Regular products (Hard-fail)
-                if (product.SaleType == SaleType.Regular)
+                // If product is already Active, register the new SKU in Fulfillment warehouse with initialQuantity = 0
+                if (product.SaleType == SaleType.Regular && product.Status == ProductStatus.Active)
                 {
                     var invResult = await _fulfillmentClient.InitializeInventoryForSkuAsync(
                         variant.Id,
                         product.SellerId,
-                        request.Quantity,
+                        initialQuantity: 0,
                         cancellationToken);
 
                     if (invResult == null)
@@ -1444,6 +1558,15 @@ public sealed class ProductService : IProductService
         if (!string.IsNullOrWhiteSpace(request.Currency))
         {
             variant.Currency = request.Currency.Trim().ToUpperInvariant();
+        }
+
+        if (request.WeightGrams.HasValue)
+        {
+            if (request.WeightGrams.Value <= 0)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Variant WeightGrams must be greater than 0.");
+            }
+            variant.WeightGrams = request.WeightGrams.Value;
         }
 
         variant.UpdatedAt = DateTimeOffset.UtcNow;
@@ -1838,7 +1961,8 @@ public sealed class ProductService : IProductService
                     v.IsActive,
                     v.HasOrder,
                     attrs,
-                    vImages);
+                    vImages,
+                    v.WeightGrams);
             })
             .ToList();
 
@@ -1859,7 +1983,8 @@ public sealed class ProductService : IProductService
             product.UpdatedAt,
             product.PublishedAt,
             productImages,
-            variantDtos);
+            variantDtos,
+            product.WeightGrams);
     }
 
     // -------------------------------------------------------------
@@ -1907,12 +2032,14 @@ public sealed class ProductService : IProductService
                 .Select(a => new ProductVariantAttributeDto(a.AttrName, a.AttrValue))
                 .ToList();
 
+            var effectiveWeight = v.WeightGrams ?? v.Product?.WeightGrams;
             var isPurchasable = !v.IsDeleted &&
                 v.Status == VariantStatus.Active &&
                 v.Product != null &&
                 !v.Product.IsDeleted &&
                 v.Product.Status == ProductStatus.Active &&
-                (v.Product.SaleType != SaleType.Regular || (v.Price.HasValue && v.Price.Value > 0));
+                (v.Product.SaleType != SaleType.Regular || (v.Price.HasValue && v.Price.Value > 0)) &&
+                (effectiveWeight.HasValue && effectiveWeight.Value > 0);
 
             return new BatchVariantItemDto(
                 VariantId: v.Id,
@@ -1928,7 +2055,8 @@ public sealed class ProductService : IProductService
                 SaleType: v.Product?.SaleType.ToString() ?? string.Empty,
                 PrimaryImageUrl: resolvedImageUrl,
                 Attributes: attrs,
-                IsPurchasable: isPurchasable
+                IsPurchasable: isPurchasable,
+                WeightGrams: effectiveWeight
             );
         }).ToList();
 
@@ -2004,6 +2132,13 @@ public sealed class ProductService : IProductService
                 reason = "NOT_FOR_AUCTION";
             }
 
+            var effectiveWeight = v.WeightGrams ?? prod?.WeightGrams;
+            if (purpose is "ORDER" or "CHECKOUT" && (!effectiveWeight.HasValue || effectiveWeight.Value <= 0))
+            {
+                isPurchasable = false;
+                reason = "MISSING_SHIPPING_WEIGHT";
+            }
+
             items.Add(new VariantStatusItemDto(
                 VariantId: v.Id,
                 ProductId: v.ProductId,
@@ -2074,6 +2209,12 @@ public sealed class ProductService : IProductService
 
         var unitPrice = newVariant.Price ?? 0m;
         var sellerId = product?.SellerId ?? Guid.Empty;
+        var effectiveWeight = newVariant.WeightGrams ?? product?.WeightGrams;
+
+        if (!effectiveWeight.HasValue || effectiveWeight.Value <= 0)
+        {
+            isPurchasable = false;
+        }
 
         return new ValidateVariantSwitchResponse(
             IsValid: true,
@@ -2083,7 +2224,692 @@ public sealed class ProductService : IProductService
             NewSkuName: newVariant.Name,
             NewUnitPrice: unitPrice,
             IsPurchasable: isPurchasable,
-            WeightGrams: 200
+            WeightGrams: effectiveWeight
         );
+    }
+
+    // -------------------------------------------------------------
+    // Dedicated Auction APIs (CAT-46, CAT-47, CAT-48, CAT-49)
+    // -------------------------------------------------------------
+
+    public async Task<PagedData<AuctionProductListItemDto>> SearchAuctionsAsync(
+        AuctionListQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        var (safePage, safePageSize) = PaginationConstants.Normalize(query.Page, query.PageSize);
+
+        var products = _dbContext.Products
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted && p.SaleType == SaleType.Auction);
+
+        if (!string.IsNullOrWhiteSpace(query.Status))
+        {
+            if (!string.Equals(query.Status, "all", StringComparison.OrdinalIgnoreCase) &&
+                Enum.TryParse<ProductStatus>(query.Status, true, out var filterStatus))
+            {
+                products = products.Where(p => p.Status == filterStatus);
+            }
+        }
+        else
+        {
+            // Default: Active or InAuction
+            products = products.Where(p => p.Status == ProductStatus.Active || p.Status == ProductStatus.InAuction);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Keyword))
+        {
+            var keyword = query.Keyword.Trim().ToLower();
+            products = products.Where(p => p.Name.ToLower().Contains(keyword) || (p.Brand != null && p.Brand.ToLower().Contains(keyword)));
+        }
+
+        if (query.CategoryId.HasValue)
+        {
+            products = products.Where(p => p.CategoryId == query.CategoryId.Value);
+        }
+
+        if (query.SellerId.HasValue)
+        {
+            products = products.Where(p => p.SellerId == query.SellerId.Value);
+        }
+
+        var totalCount = await products.CountAsync(cancellationToken);
+
+        var sortKey = query.SortBy?.Trim().ToLowerInvariant();
+        products = sortKey switch
+        {
+            "oldest" => products.OrderBy(p => p.CreatedAt),
+            _ => products.OrderByDescending(p => p.CreatedAt)
+        };
+
+        var rows = await products
+            .Skip((safePage - 1) * safePageSize)
+            .Take(safePageSize)
+            .Select(p => new
+            {
+                p.Id,
+                p.SellerId,
+                p.CategoryId,
+                p.Name,
+                p.Brand,
+                p.Status,
+                p.CreatedAt,
+                p.PublishedAt,
+                SkuCode = p.Variants.Where(v => !v.IsDeleted).Select(v => v.SkuCode).FirstOrDefault() ?? string.Empty,
+                PrimaryImageUrl = p.Images
+                    .Where(i => !i.IsDeleted && i.IsActive)
+                    .OrderBy(i => i.SortOrder)
+                    .Select(i => i.Url)
+                    .FirstOrDefault() ?? DefaultImageUrl
+            })
+            .ToListAsync(cancellationToken);
+
+        var items = rows.Select(r => new AuctionProductListItemDto(
+            r.Id,
+            r.SellerId,
+            r.CategoryId,
+            r.Name,
+            r.Brand,
+            r.SkuCode,
+            r.Status.ToString(),
+            r.PrimaryImageUrl,
+            r.CreatedAt,
+            r.PublishedAt
+        )).ToList();
+
+        return new PagedData<AuctionProductListItemDto>(items, PaginationMetadata.Create(safePage, safePageSize, totalCount));
+    }
+
+    public async Task<AuctionProductDetailDto> GetAuctionDetailAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var product = await _dbContext.Products
+            .AsNoTracking()
+            .Include(p => p.Category)
+            .Include(p => p.Variants)
+            .Include(p => p.Images)
+            .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, cancellationToken);
+
+        if (product == null || product.SaleType != SaleType.Auction)
+        {
+            throw new EntityNotFoundException("AUCTION_NOT_FOUND", "AuctionProduct", id);
+        }
+
+        var variant = product.Variants.FirstOrDefault(v => !v.IsDeleted);
+        var skuCode = variant?.SkuCode ?? string.Empty;
+        var variantId = variant?.Id ?? Guid.Empty;
+
+        var images = product.Images
+            .Where(i => !i.IsDeleted)
+            .OrderBy(i => i.SortOrder)
+            .Select(i => new ProductImageDto(i.Id, i.ProductId, i.VariantId, i.Url, i.AltText, i.IsActive, i.SortOrder))
+            .ToList();
+
+        return new AuctionProductDetailDto(
+            ProductId: product.Id,
+            SellerId: product.SellerId,
+            CategoryId: product.CategoryId,
+            CategoryName: product.Category?.Name ?? string.Empty,
+            Name: product.Name,
+            Description: product.Description,
+            Brand: product.Brand,
+            Status: product.Status.ToString(),
+            SkuCode: skuCode,
+            VariantId: variantId,
+            Specifications: ProductSpecificationHelper.Deserialize(product.Specifications),
+            Images: images,
+            CreatedAt: product.CreatedAt,
+            PublishedAt: product.PublishedAt,
+            WeightGrams: product.WeightGrams ?? variant?.WeightGrams
+        );
+    }
+
+    public async Task<PagedData<AuctionProductListItemDto>> SearchSellerAuctionsAsync(
+        Guid sellerId,
+        AuctionListQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        var (safePage, safePageSize) = PaginationConstants.Normalize(query.Page, query.PageSize);
+
+        var products = _dbContext.Products
+            .AsNoTracking()
+            .Where(p => p.SellerId == sellerId && !p.IsDeleted && p.SaleType == SaleType.Auction);
+
+        if (!string.IsNullOrWhiteSpace(query.Status))
+        {
+            if (!string.Equals(query.Status, "all", StringComparison.OrdinalIgnoreCase) &&
+                Enum.TryParse<ProductStatus>(query.Status, true, out var filterStatus))
+            {
+                products = products.Where(p => p.Status == filterStatus);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Keyword))
+        {
+            var keyword = query.Keyword.Trim().ToLower();
+            products = products.Where(p => p.Name.ToLower().Contains(keyword) || (p.Brand != null && p.Brand.ToLower().Contains(keyword)));
+        }
+
+        if (query.CategoryId.HasValue)
+        {
+            products = products.Where(p => p.CategoryId == query.CategoryId.Value);
+        }
+
+        var totalCount = await products.CountAsync(cancellationToken);
+
+        var sortKey = query.SortBy?.Trim().ToLowerInvariant();
+        products = sortKey switch
+        {
+            "oldest" => products.OrderBy(p => p.CreatedAt),
+            _ => products.OrderByDescending(p => p.CreatedAt)
+        };
+
+        var rows = await products
+            .Skip((safePage - 1) * safePageSize)
+            .Take(safePageSize)
+            .Select(p => new
+            {
+                p.Id,
+                p.SellerId,
+                p.CategoryId,
+                p.Name,
+                p.Brand,
+                p.Status,
+                p.CreatedAt,
+                p.PublishedAt,
+                SkuCode = p.Variants.Where(v => !v.IsDeleted).Select(v => v.SkuCode).FirstOrDefault() ?? string.Empty,
+                PrimaryImageUrl = p.Images
+                    .Where(i => !i.IsDeleted && i.IsActive)
+                    .OrderBy(i => i.SortOrder)
+                    .Select(i => i.Url)
+                    .FirstOrDefault() ?? DefaultImageUrl
+            })
+            .ToListAsync(cancellationToken);
+
+        var items = rows.Select(r => new AuctionProductListItemDto(
+            r.Id,
+            r.SellerId,
+            r.CategoryId,
+            r.Name,
+            r.Brand,
+            r.SkuCode,
+            r.Status.ToString(),
+            r.PrimaryImageUrl,
+            r.CreatedAt,
+            r.PublishedAt
+        )).ToList();
+
+        return new PagedData<AuctionProductListItemDto>(items, PaginationMetadata.Create(safePage, safePageSize, totalCount));
+    }
+
+    public async Task<ProductDto> ChangeAuctionStatusAsync(
+        Guid id,
+        ChangeProductStatusRequest request,
+        Guid currentUserId,
+        CancellationToken cancellationToken = default)
+    {
+        var product = await _dbContext.Products
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, cancellationToken)
+            ?? throw new EntityNotFoundException("PRODUCT_NOT_FOUND", "Product", id);
+
+        if (product.SaleType != SaleType.Auction)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "This operation is only valid for auction products.");
+        }
+
+        return await ChangeStatusAsync(id, request, currentUserId, cancellationToken);
+    }
+
+    // -------------------------------------------------------------
+    // Admin Operations (CAT-50, CAT-51)
+    // -------------------------------------------------------------
+
+    public async Task<PagedData<AdminProductListItemDto>> SearchAdminProductsAsync(
+        AdminProductSearchQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        var (safePage, safePageSize) = PaginationConstants.Normalize(query.Page, query.PageSize);
+
+        var products = _dbContext.Products
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted);
+
+        if (query.SellerId.HasValue)
+        {
+            products = products.Where(p => p.SellerId == query.SellerId.Value);
+        }
+
+        if (query.Status.HasValue)
+        {
+            products = products.Where(p => p.Status == query.Status.Value);
+        }
+
+        if (query.StatusReason.HasValue)
+        {
+            products = products.Where(p => p.StatusReason == query.StatusReason.Value);
+        }
+
+        if (query.CategoryId.HasValue)
+        {
+            products = products.Where(p => p.CategoryId == query.CategoryId.Value);
+        }
+
+        if (query.SaleType.HasValue)
+        {
+            products = products.Where(p => p.SaleType == query.SaleType.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Keyword))
+        {
+            var keyword = query.Keyword.Trim().ToLower();
+            products = products.Where(p => p.Name.ToLower().Contains(keyword) || (p.Brand != null && p.Brand.ToLower().Contains(keyword)));
+        }
+
+        var totalCount = await products.CountAsync(cancellationToken);
+
+        var isDesc = string.Equals(query.SortDirection, "desc", StringComparison.OrdinalIgnoreCase);
+        var sortKey = query.SortBy?.Trim().ToLowerInvariant();
+
+        products = (sortKey, isDesc) switch
+        {
+            ("name", false) => products.OrderBy(p => p.Name).ThenBy(p => p.Id),
+            ("name", true) => products.OrderByDescending(p => p.Name).ThenBy(p => p.Id),
+            ("status", false) => products.OrderBy(p => p.Status).ThenBy(p => p.Id),
+            ("status", true) => products.OrderByDescending(p => p.Status).ThenBy(p => p.Id),
+            ("createdat", false) => products.OrderBy(p => p.CreatedAt).ThenBy(p => p.Id),
+            _ => products.OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Id)
+        };
+
+        var rows = await products
+            .Skip((safePage - 1) * safePageSize)
+            .Take(safePageSize)
+            .Select(p => new
+            {
+                p.Id,
+                p.SellerId,
+                p.CategoryId,
+                CategoryName = p.Category != null ? p.Category.Name : string.Empty,
+                p.Name,
+                p.Brand,
+                SaleType = p.SaleType.ToString(),
+                Status = p.Status.ToString(),
+                StatusReason = p.StatusReason != null ? p.StatusReason.ToString() : null,
+                MinPrice = p.Variants.Where(v => !v.IsDeleted && v.Status == VariantStatus.Active).Min(v => v.Price),
+                MaxPrice = p.Variants.Where(v => !v.IsDeleted && v.Status == VariantStatus.Active).Max(v => v.Price),
+                PrimaryImageUrl = p.Images
+                    .Where(i => !i.IsDeleted && i.IsActive)
+                    .OrderBy(i => i.SortOrder)
+                    .Select(i => i.Url)
+                    .FirstOrDefault() ?? DefaultImageUrl,
+                p.CreatedAt,
+                p.PublishedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        var items = rows.Select(r => new AdminProductListItemDto(
+            r.Id,
+            r.SellerId,
+            r.CategoryId,
+            r.CategoryName,
+            r.Name,
+            r.Brand,
+            r.SaleType,
+            r.Status,
+            r.StatusReason,
+            r.MinPrice,
+            r.MaxPrice,
+            r.PrimaryImageUrl,
+            r.CreatedAt,
+            r.PublishedAt
+        )).ToList();
+
+        return new PagedData<AdminProductListItemDto>(items, PaginationMetadata.Create(safePage, safePageSize, totalCount));
+    }
+
+    public async Task<ProductDto> ModerateProductAsync(
+        Guid id,
+        ModerateProductRequest request,
+        Guid adminId,
+        CancellationToken cancellationToken = default)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(request.Action))
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Action is required. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK.");
+        }
+
+        var product = await _dbContext.Products
+            .Include(p => p.Variants)
+            .Include(p => p.Images)
+            .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, cancellationToken)
+            ?? throw new EntityNotFoundException("PRODUCT_NOT_FOUND", "Product", id);
+
+        if (product.Status == ProductStatus.Auctioned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_AUCTIONED", "Auctioned products are permanently locked and cannot be moderated.");
+        }
+
+        var action = request.Action.Trim().ToUpperInvariant();
+        var oldStatus = product.Status;
+        var oldReason = product.StatusReason;
+        var now = DateTimeOffset.UtcNow;
+
+        if (action == "APPROVE" || action == "UNLOCK")
+        {
+            var hasActiveVariant = product.Variants.Any(v => !v.IsDeleted && v.Status == VariantStatus.Active && (product.SaleType == SaleType.Auction || (v.Price.HasValue && v.Price.Value > 0)));
+            if (!hasActiveVariant)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot approve product without at least one active variant with valid price.");
+            }
+
+            var hasActiveImage = product.Images.Any(i => !i.IsDeleted && i.IsActive);
+            if (!hasActiveImage)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot approve product without at least one active product image.");
+            }
+
+            if (product.SaleType == SaleType.Auction)
+            {
+                if (!product.WeightGrams.HasValue || product.WeightGrams.Value <= 0)
+                {
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot approve auction product without valid shipping weight. Product must declare WeightGrams greater than 0.");
+                }
+            }
+            else
+            {
+                var productHasWeight = product.WeightGrams.HasValue && product.WeightGrams.Value > 0;
+                if (!productHasWeight)
+                {
+                    var variantsMissingWeight = product.Variants
+                        .Where(v => !v.IsDeleted && v.Status == VariantStatus.Active)
+                        .Any(v => !v.WeightGrams.HasValue || v.WeightGrams.Value <= 0);
+
+                    if (variantsMissingWeight)
+                    {
+                        throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot approve product without valid shipping weight. Either declare WeightGrams on product or provide WeightGrams greater than 0 for all active variants.");
+                    }
+                }
+            }
+
+            product.Status = ProductStatus.Active;
+            product.StatusReason = null;
+            product.PublishedAt ??= now;
+        }
+        else if (action == "SUSPEND" || action == "REJECT")
+        {
+            product.Status = ProductStatus.Inactive;
+            product.StatusReason = ProductInactiveReason.AdminLocked;
+
+            // Deactivate variants
+            foreach (var v in product.Variants.Where(v => !v.IsDeleted))
+            {
+                v.Status = VariantStatus.Inactive;
+            }
+        }
+        else
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Unknown action '{request.Action}'. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK.");
+        }
+
+        product.UpdatedAt = now;
+        product.UpdatedBy = adminId;
+
+        _dbContext.AddAuditLog(
+            AuditAction.ProductUpdate,
+            "Product",
+            product.Id.ToString(),
+            oldValues: new { Status = oldStatus.ToString(), Reason = oldReason?.ToString() },
+            newValues: new { Status = product.Status.ToString(), Reason = product.StatusReason?.ToString(), Note = request.Note, ModeratedBy = adminId },
+            userId: adminId.ToString());
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new ProductDto(
+            product.Id,
+            product.SellerId,
+            product.CategoryId,
+            product.Name,
+            product.Description,
+            product.Brand,
+            product.Status.ToString(),
+            product.WeightGrams);
+    }
+
+    // -------------------------------------------------------------
+    // Inter-Service Auction Operations
+    // -------------------------------------------------------------
+
+    public async Task<AuctionEligibilityResponse> CheckAuctionEligibilityAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var product = await _dbContext.Products
+            .Include(p => p.Variants)
+            .Include(p => p.Images)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, cancellationToken);
+
+        if (product == null)
+        {
+            return new AuctionEligibilityResponse(
+                ProductId: id,
+                IsEligible: false,
+                Reason: "Product was not found or is deleted.",
+                Status: "NotFound",
+                SkuCode: null,
+                WeightGrams: null);
+        }
+
+        if (product.SaleType != SaleType.Auction)
+        {
+            return new AuctionEligibilityResponse(
+                ProductId: id,
+                IsEligible: false,
+                Reason: "Product is not registered as an auction product.",
+                Status: product.Status.ToString(),
+                SkuCode: product.Variants.FirstOrDefault()?.SkuCode,
+                WeightGrams: product.WeightGrams);
+        }
+
+        if (product.Status == ProductStatus.InAuction)
+        {
+            return new AuctionEligibilityResponse(
+                ProductId: id,
+                IsEligible: false,
+                Reason: "Product is already locked in an ongoing auction.",
+                Status: product.Status.ToString(),
+                SkuCode: product.Variants.FirstOrDefault()?.SkuCode,
+                WeightGrams: product.WeightGrams);
+        }
+
+        if (product.Status == ProductStatus.Auctioned)
+        {
+            return new AuctionEligibilityResponse(
+                ProductId: id,
+                IsEligible: false,
+                Reason: "Product has already been auctioned and cannot be put into auction again.",
+                Status: product.Status.ToString(),
+                SkuCode: product.Variants.FirstOrDefault()?.SkuCode,
+                WeightGrams: product.WeightGrams);
+        }
+
+        if (product.Status != ProductStatus.Active)
+        {
+            return new AuctionEligibilityResponse(
+                ProductId: id,
+                IsEligible: false,
+                Reason: $"Product status is '{product.Status}'. Only active products can be placed into an auction.",
+                Status: product.Status.ToString(),
+                SkuCode: product.Variants.FirstOrDefault()?.SkuCode,
+                WeightGrams: product.WeightGrams);
+        }
+
+        var hasActiveImage = product.Images.Any(i => !i.IsDeleted && i.IsActive);
+        if (!hasActiveImage)
+        {
+            return new AuctionEligibilityResponse(
+                ProductId: id,
+                IsEligible: false,
+                Reason: "Product does not have any active images.",
+                Status: product.Status.ToString(),
+                SkuCode: product.Variants.FirstOrDefault()?.SkuCode,
+                WeightGrams: product.WeightGrams);
+        }
+
+        return new AuctionEligibilityResponse(
+            ProductId: id,
+            IsEligible: true,
+            Reason: null,
+            Status: product.Status.ToString(),
+            SkuCode: product.Variants.FirstOrDefault()?.SkuCode,
+            WeightGrams: product.WeightGrams);
+    }
+
+    public async Task<ProductDto> LockForAuctionAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var product = await _dbContext.Products
+            .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, cancellationToken)
+            ?? throw new EntityNotFoundException("PRODUCT_NOT_FOUND", "Product", id);
+
+        if (product.SaleType != SaleType.Auction)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "This operation is only valid for auction products.");
+        }
+
+        if (product.Status == ProductStatus.InAuction)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_IN_AUCTION", "Product is already locked in an active auction.");
+        }
+
+        if (product.Status == ProductStatus.Auctioned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_AUCTIONED", "Auctioned products cannot be put into auction again.");
+        }
+
+        if (product.Status != ProductStatus.Active)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Cannot lock product with status '{product.Status}' for auction. Product must be in Active status.");
+        }
+
+        var oldStatus = product.Status;
+        product.Status = ProductStatus.InAuction;
+        product.UpdatedAt = DateTimeOffset.UtcNow;
+
+        _dbContext.AddAuditLog(
+            AuditAction.ProductUpdate,
+            "Product",
+            product.Id.ToString(),
+            oldValues: new { Status = oldStatus },
+            newValues: new { Status = product.Status },
+            userId: "System:AuctionService");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new ProductDto(
+            product.Id,
+            product.SellerId,
+            product.CategoryId,
+            product.Name,
+            product.Description,
+            product.Brand,
+            product.Status.ToString(),
+            product.WeightGrams);
+    }
+
+    public async Task<ProductDto> UnlockFromAuctionAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var product = await _dbContext.Products
+            .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, cancellationToken)
+            ?? throw new EntityNotFoundException("PRODUCT_NOT_FOUND", "Product", id);
+
+        if (product.SaleType != SaleType.Auction)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "This operation is only valid for auction products.");
+        }
+
+        if (product.Status != ProductStatus.InAuction)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_NOT_IN_AUCTION", $"Product is not currently in an active auction. Current status is '{product.Status}'.");
+        }
+
+        var oldStatus = product.Status;
+        product.Status = ProductStatus.Active;
+        product.UpdatedAt = DateTimeOffset.UtcNow;
+
+        _dbContext.AddAuditLog(
+            AuditAction.ProductUpdate,
+            "Product",
+            product.Id.ToString(),
+            oldValues: new { Status = oldStatus },
+            newValues: new { Status = product.Status },
+            userId: "System:AuctionService");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new ProductDto(
+            product.Id,
+            product.SellerId,
+            product.CategoryId,
+            product.Name,
+            product.Description,
+            product.Brand,
+            product.Status.ToString(),
+            product.WeightGrams);
+    }
+
+    public async Task<ProductDto> MarkAsAuctionedAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var product = await _dbContext.Products
+            .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, cancellationToken)
+            ?? throw new EntityNotFoundException("PRODUCT_NOT_FOUND", "Product", id);
+
+        if (product.SaleType != SaleType.Auction)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "This operation is only valid for auction products.");
+        }
+
+        if (product.Status == ProductStatus.Auctioned)
+        {
+            // Idempotent: already marked as auctioned
+            return new ProductDto(
+                product.Id,
+                product.SellerId,
+                product.CategoryId,
+                product.Name,
+                product.Description,
+                product.Brand,
+                product.Status.ToString(),
+                product.WeightGrams);
+        }
+
+        var oldStatus = product.Status;
+        product.Status = ProductStatus.Auctioned;
+        product.UpdatedAt = DateTimeOffset.UtcNow;
+
+        _dbContext.AddAuditLog(
+            AuditAction.ProductUpdate,
+            "Product",
+            product.Id.ToString(),
+            oldValues: new { Status = oldStatus },
+            newValues: new { Status = product.Status },
+            userId: "System:AuctionService");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new ProductDto(
+            product.Id,
+            product.SellerId,
+            product.CategoryId,
+            product.Name,
+            product.Description,
+            product.Brand,
+            product.Status.ToString(),
+            product.WeightGrams);
     }
 }
