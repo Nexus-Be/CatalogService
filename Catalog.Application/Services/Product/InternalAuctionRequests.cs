@@ -11,3 +11,8 @@ public sealed record AuctionEligibilityResponse(
     int? WeightGrams
 );
 
+public sealed record RevertAuctionedRequest(
+    string? Reason = null,
+    string? Note = null
+);
+

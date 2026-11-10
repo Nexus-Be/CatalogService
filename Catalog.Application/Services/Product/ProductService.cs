@@ -2912,4 +2912,65 @@ public sealed class ProductService : IProductService
             product.Status.ToString(),
             product.WeightGrams);
     }
+
+    public async Task<ProductDto> RevertAuctionedAsync(
+        Guid id,
+        RevertAuctionedRequest? request,
+        CancellationToken cancellationToken = default)
+    {
+        var product = await _dbContext.Products
+            .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, cancellationToken)
+            ?? throw new EntityNotFoundException("PRODUCT_NOT_FOUND", "Product", id);
+
+        if (product.SaleType != SaleType.Auction)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "This operation is only valid for auction products.");
+        }
+
+        if (product.Status == ProductStatus.Active)
+        {
+            // Idempotent: already reverted back to Active
+            return new ProductDto(
+                product.Id,
+                product.SellerId,
+                product.CategoryId,
+                product.Name,
+                product.Description,
+                product.Brand,
+                product.Status.ToString(),
+                product.WeightGrams);
+        }
+
+        if (product.Status != ProductStatus.Auctioned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_NOT_AUCTIONED", $"Product is not in Auctioned status. Current status is '{product.Status}'.");
+        }
+
+        var oldStatus = product.Status;
+        product.Status = ProductStatus.Active;
+        product.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var reason = !string.IsNullOrWhiteSpace(request?.Reason) ? request.Reason.Trim() : "SELLER_REJECTED";
+        var note = request?.Note?.Trim();
+
+        _dbContext.AddAuditLog(
+            AuditAction.ProductUpdate,
+            "Product",
+            product.Id.ToString(),
+            oldValues: new { Status = oldStatus },
+            newValues: new { Status = product.Status, Reason = reason, Note = note },
+            userId: "System:AuctionService");
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new ProductDto(
+            product.Id,
+            product.SellerId,
+            product.CategoryId,
+            product.Name,
+            product.Description,
+            product.Brand,
+            product.Status.ToString(),
+            product.WeightGrams);
+    }
 }

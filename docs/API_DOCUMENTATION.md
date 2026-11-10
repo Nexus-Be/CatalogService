@@ -10,7 +10,7 @@
 
 ---
 
-## 📌 MỤC LỤC DANH SÁCH 36 ENDPOINTS
+## 📌 MỤC LỤC DANH SÁCH 41 ENDPOINTS
 
 | STT | Phương thức | Endpoint Route | Controller & Action | Nhóm nghiệp vụ |
 | :---: | :---: | :--- | :--- | :--- |
@@ -54,6 +54,7 @@
 | **38** | `POST` | `/api/v1/internal/products/{id}/lock-auction` | `InternalProductsController.LockForAuction` | Liên Service Auction (CAT-53) |
 | **39** | `POST` | `/api/v1/internal/products/{id}/unlock-auction` | `InternalProductsController.UnlockFromAuction` | Liên Service Auction (CAT-54) |
 | **40** | `POST` | `/api/v1/internal/products/{id}/mark-auctioned` | `InternalProductsController.MarkAsAuctioned` | Liên Service Auction (CAT-55) |
+| **41** | `POST` | `/api/v1/internal/products/{id}/revert-auctioned` | `InternalProductsController.RevertAuctioned` | Liên Service Auction (CAT-56) |
 
 ---
 
@@ -959,3 +960,11 @@
 - **Endpoint Route:** `/api/v1/internal/products/{id}/mark-auctioned`
 - **Mô tả:** Chốt bán thành công cho người trúng đấu giá, chuyển trạng thái sản phẩm sang `Auctioned` (khóa cứng vĩnh viễn, lưu vết lịch sử giao dịch).
 - **Tài liệu chi tiết:** Xem [`POST_internal_products_id_mark_auctioned.md`](api/Internal/POST_internal_products_id_mark_auctioned.md) và hợp đồng liên service [`AUCTION_INTER_SERVICE_CONTRACT.md`](api/Internal/AUCTION_INTER_SERVICE_CONTRACT.md).
+
+---
+
+### API 41. `POST /api/v1/internal/products/{id}/revert-auctioned` — Hoàn tác sản phẩm đấu giá về Active khi Seller từ chối đơn / hủy đơn sau thanh toán [CAT-56]
+- **Quyền hạn:** `Internal`.
+- **Endpoint Route:** `/api/v1/internal/products/{id}/revert-auctioned`
+- **Mô tả:** Chuyển trạng thái sản phẩm từ `Auctioned` quay về `Active` khi đơn hàng bị Seller từ chối sau thanh toán hoặc giao dịch bị hủy/hoàn tiền. Cho phép Seller quản lý và đưa sản phẩm vào phiên đấu giá mới. Hỗ trợ Idempotent và ghi vết lý do vào `audit_logs`.
+- **Tài liệu chi tiết:** Xem [`POST_internal_products_id_revert_auctioned.md`](api/Internal/POST_internal_products_id_revert_auctioned.md) và hợp đồng liên service [`AUCTION_INTER_SERVICE_CONTRACT.md`](api/Internal/AUCTION_INTER_SERVICE_CONTRACT.md).
