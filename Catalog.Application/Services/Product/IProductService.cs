@@ -170,4 +170,9 @@ public interface IProductService
     Task<ProductDto> MarkAsAuctionedAsync(
         Guid id,
         CancellationToken cancellationToken = default);
+
+    Task<ProductDto> RevertAuctionedAsync(
+        Guid id,
+        RevertAuctionedRequest? request,
+        CancellationToken cancellationToken = default);
 }

@@ -68,5 +68,19 @@ public class InternalProductsController : ControllerBase
         var result = await _productService.MarkAsAuctionedAsync(id, ct);
         return Ok(result);
     }
+
+    /// <summary>Hoàn tác sản phẩm đấu giá về Active khi Seller từ chối đơn hoặc hủy giao dịch sau thanh toán (Status -> Active).</summary>
+    [HttpPost("{id:guid}/revert-auctioned")]
+    [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ProductDto>> RevertAuctioned(
+        [FromRoute] Guid id,
+        [FromBody] RevertAuctionedRequest? request,
+        CancellationToken ct)
+    {
+        var result = await _productService.RevertAuctionedAsync(id, request, ct);
+        return Ok(result);
+    }
 }
 
