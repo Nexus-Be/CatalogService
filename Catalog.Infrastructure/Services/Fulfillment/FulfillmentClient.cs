@@ -160,42 +160,25 @@ public sealed class FulfillmentClient : IFulfillmentClient
         int initialQuantity = 0,
         CancellationToken cancellationToken = default)
     {
-        Guid? targetWarehouseId = null;
-
-        // Step 1: Look for an active warehouse belonging to the seller (WH-03)
-        if (sellerId != Guid.Empty)
+        if (sellerId == Guid.Empty)
         {
-            var sellerWarehouses = await GetWarehousesBySellerIdAsync(sellerId, cancellationToken);
-            var activeSellerWh = sellerWarehouses.FirstOrDefault(w => w.IsActive);
-            if (activeSellerWh != null)
-            {
-                targetWarehouseId = activeSellerWh.Id;
-            }
+            _logger.LogWarning("[REST Internal Fulfillment] SellerId is empty. Cannot declare inventory for SKU '{SkuId}'.", skuId);
+            return null;
         }
 
-        // Step 2: Fallback to active platform/central warehouse if seller has no dedicated warehouse (WH-01)
-        if (!targetWarehouseId.HasValue)
+        // Dedicated warehouse lookup: Each seller has exactly 1 private warehouse (SellerWarehouse)
+        var sellerWarehouses = await GetWarehousesBySellerIdAsync(sellerId, cancellationToken);
+        var activeSellerWh = sellerWarehouses.FirstOrDefault(w => w.IsActive);
+        if (activeSellerWh == null)
         {
-            var activeWarehouses = await GetActiveWarehousesAsync(cancellationToken);
-            var fallbackWh = activeWarehouses.FirstOrDefault(w => !w.SellerId.HasValue || w.SellerId.Value == Guid.Empty)
-                ?? activeWarehouses.FirstOrDefault(w => w.IsActive);
-
-            if (fallbackWh != null)
-            {
-                targetWarehouseId = fallbackWh.Id;
-            }
+            _logger.LogWarning("[REST Internal Fulfillment] No active warehouse found for seller '{SellerId}'. Cannot declare inventory for SKU '{SkuId}'.",
+                sellerId, skuId);
+            return null;
         }
 
-        if (targetWarehouseId.HasValue)
-        {
-            return await DeclareInventoryAsync(
-                new DeclareInventoryClientRequest(skuId, targetWarehouseId.Value, initialQuantity, "Initial inventory declared by CatalogService"),
-                cancellationToken);
-        }
-
-        _logger.LogWarning("[REST Internal Fulfillment] No active warehouse found for seller '{SellerId}' or platform. Cannot declare inventory for SKU '{SkuId}'.",
-            sellerId, skuId);
-        return null;
+        return await DeclareInventoryAsync(
+            new DeclareInventoryClientRequest(skuId, activeSellerWh.Id, initialQuantity, "Initial inventory declared by CatalogService"),
+            cancellationToken);
     }
 
     public async Task<InventoryClientResponse?> InitializeInventoryAsync(
