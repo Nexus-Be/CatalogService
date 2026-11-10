@@ -16,6 +16,7 @@ public interface ICatalogDbContext
     DbSet<ProductRatingStats> ProductRatingStats { get; }
     DbSet<PurchaseRecord> PurchaseRecords { get; }
     DbSet<ProductReview> ProductReviews { get; }
+    DbSet<ProductReport> ProductReports { get; }
     DbSet<AuditLog> AuditLogs { get; }
     DatabaseFacade Database { get; }
 

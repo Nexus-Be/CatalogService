@@ -9,9 +9,7 @@
 
 ## 1. Thông tin Định tuyến & RBAC (Routing & Authorization)
 - **HTTP Method:** `GET`
-- **Route Endpoint:**
-  - Route chính thức (Chuẩn REST): `/api/v1/admin/products`
-  - Route tương thích YARP Gateway: `/api/v1/products/admin` (khớp pattern `/api/v1/products/{**catch-all}`)
+- **Route Endpoint:** `/api/v1/admin/products` (Canonical route duy nhất)
 - **Quyền hạn (RBAC Policy):** `[RequireRole("admin", "staff")]`
 - **Header bắt buộc:**
   - `X-User-Roles: admin` hoặc `X-User-Roles: staff`

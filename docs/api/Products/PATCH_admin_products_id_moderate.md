@@ -1,17 +1,15 @@
 # CATALOG SERVICE - PATCH /api/v1/admin/products/{id}/moderate
 
-> **Feature / Use Case:** Quản trị viên và Nhân viên kiểm duyệt sản phẩm (Duyệt bán hoặc Cưỡng chế khóa vi phạm) [CAT-51]  
-> **Trạng thái:** ✅ VERIFIED  
-> **Ngày tạo:** 2026-11-07  
+> **Feature / Use Case:** Quản trị viên và Nhân viên kiểm duyệt sản phẩm (Duyệt bán, Khóa tạm thời hoặc Cấm vĩnh viễn) [CAT-51]  
+> **Trạng thái:** ⏳ DRAFT (Pre-Code Specification Update)  
+> **Ngày cập nhật:** 2026-11-10  
 > **Tác giả:** Nexus Team & AI Agent  
 
 ---
 
 ## 1. Thông tin Định tuyến & RBAC (Routing & Authorization)
 - **HTTP Method:** `PATCH`
-- **Route Endpoint:**
-  - Route chính thức (Chuẩn REST): `/api/v1/admin/products/{id}/moderate`
-  - Route tương thích YARP Gateway: `/api/v1/products/admin/{id}/moderate`
+- **Route Endpoint:** `/api/v1/admin/products/{id}/moderate` (Canonical route duy nhất)
 - **Quyền hạn (RBAC Policy):** `[RequireRole("admin", "staff")]`
 - **Header bắt buộc:**
   - `X-User-Id: <Guid>` (UUID của Quản trị viên hoặc Nhân viên thực hiện duyệt)
@@ -31,7 +29,7 @@
 ### 2.2 Request Body (`ModerateProductRequest`)
 | Thuộc tính | Kiểu C# | Bắt buộc | Giá trị cho phép | Mô tả |
 | :--- | :--- | :---: | :--- | :--- |
-| `action` | `string` | Có | `APPROVE`, `SUSPEND`, `REJECT`, `UNLOCK` | Hành động kiểm duyệt (không phân biệt hoa thường) |
+| `action` | `string` | Có | `APPROVE`, `SUSPEND`, `REJECT`, `UNLOCK`, `BAN` | Hành động kiểm duyệt (không phân biệt hoa thường) |
 | `reason` | `string?` | Không | Max 200 ký tự | Lý do kiểm duyệt ngắn gọn |
 | `note` | `string?` | Không | Max 1000 ký tự | Ghi chú chi tiết của kiểm duyệt viên (lưu vào Audit Log) |
 
@@ -41,20 +39,29 @@
    - Xóa bỏ cờ khóa: `StatusReason = null`.
    - Cập nhật thời điểm phát hành: `PublishedAt ??= DateTimeOffset.UtcNow`.
    - **Ràng buộc tiên quyết:** Sản phẩm phải có ít nhất 1 variant hợp lệ (`VariantStatus.Active`, có giá nếu là hàng thường) và ít nhất 1 hình ảnh đang hoạt động (`IsActive == true`).
+   - **Rào chắn chống gỡ Ban:** Nếu sản phẩm đã bị `Banned` $\to$ Cấm đổi sang `APPROVE` hay `UNLOCK`, trả lỗi `PRODUCT_ALREADY_BANNED`.
 2. **`SUSPEND` / `REJECT`:**
    - Đổi `Status = ProductStatus.Inactive`.
    - Đánh dấu lý do cưỡng chế khóa: `StatusReason = ProductInactiveReason.AdminLocked`.
    - Vô hiệu hóa toàn bộ variants thuộc sản phẩm: `v.Status = VariantStatus.Inactive`.
    - **Quy tắc chặn Seller:** Một khi đã bị gán `AdminLocked`, Seller gọi API `PATCH /api/v1/products/{id}/status` sẽ bị chặn với mã `PRODUCT_LOCKED_BY_ADMIN`.
-3. **Bảo vệ Sản phẩm Đấu giá:** Nếu sản phẩm đã ở trạng thái `Auctioned` (đã đấu giá thành công), cấm Admin thay đổi trạng thái $\to$ trả lỗi `PRODUCT_ALREADY_AUCTIONED`.
-4. **Kiểm toán (Audit Trail):** Ghi lại nhật ký vào bảng `audit_logs` với `Action = ProductUpdate`, `UserId = adminId`, lưu `oldValues` và `newValues` (kèm `Note` và `ModeratedBy`).
+3. **`BAN` ⭐ (Bổ sung mới):**
+   - Đổi `Status = ProductStatus.Banned`.
+   - Xóa `StatusReason = null` (Banned là trạng thái cấm độc lập, không phải Inactive).
+   - Vô hiệu hóa triệt để toàn bộ variants: `v.Status = VariantStatus.Inactive`, `v.IsActive = false`.
+   - **Tự động đóng toàn bộ đơn tố cáo đang chờ của sản phẩm:** Các đơn `Pending`/`Investigating` trong `ProductReports` tự động chuyển sang `Resolved` với ghi chú của Admin.
+   - **Rào chắn tuyệt đối:** Khi đã `Banned`, cấm mọi hành động sửa đổi từ Seller và cấm mở khóa thông thường.
+4. **Bảo vệ Sản phẩm Đấu giá:** Nếu sản phẩm đã ở trạng thái `Auctioned` (đã đấu giá thành công), cấm Admin thay đổi trạng thái $\to$ trả lỗi `PRODUCT_ALREADY_AUCTIONED`.
+5. **Kiểm toán (Audit Trail):**
+   - Với `BAN`: Ghi `AuditLog` với `Action = AuditAction.ProductBan`.
+   - Với các action khác: Ghi `AuditLog` với `Action = AuditAction.ProductUpdate`.
 
-- **JSON Request mẫu:**
+- **JSON Request mẫu (Cấm sản phẩm):**
 ```json
 {
-  "action": "SUSPEND",
-  "reason": "Hàng giả nhái thương hiệu",
-  "note": "Phát hiện hình ảnh chứng nhận giám định bị làm giả số hiệu 2026-X. Tạm dừng kinh doanh chờ xác minh."
+  "action": "BAN",
+  "reason": "Buôn bán hàng cấm theo quy định pháp luật",
+  "note": "Xác minh sản phẩm thuộc danh mục cấm lưu hành. Cấm vĩnh viễn khỏi toàn bộ hệ thống."
 }
 ```
 
@@ -64,18 +71,6 @@
 
 - **Mã HTTP thành công:** `200 OK`
 - **Kiểu trả về:** `ProductDto`
-- **Khai báo C# Record:**
-```csharp
-public sealed record ProductDto(
-    Guid Id,
-    Guid SellerId,
-    Guid CategoryId,
-    string Name,
-    string Description,
-    string? Brand,
-    string Status);
-```
-
 - **JSON Response mẫu:**
 ```json
 {
@@ -85,21 +80,21 @@ public sealed record ProductDto(
   "name": "Bức Họa Cổ Phong Cảnh Mùa Thu",
   "description": "Bức họa tranh lụa thế kỷ 19",
   "brand": "Nexus Art",
-  "status": "Inactive"
+  "status": "Banned"
 }
 ```
 
 ---
 
 ## 4. Ma trận Mã lỗi RFC 9110 (Error Matrix)
-| HTTP Status | Error Code | Detail | Điều kiện phát sinh |
-| :---: | :--- | :--- | :--- |
-| `400 Bad Request` | `VAL_INVALID_INPUT` | Action is required. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK. | Trường `action` rỗng hoặc mang giá trị không hợp lệ |
-| `400 Bad Request` | `VAL_INVALID_INPUT` | Cannot approve product without at least one active variant with valid price. | Duyệt bán sản phẩm nhưng chưa tạo variant hoạt động hoặc thiếu giá |
-| `400 Bad Request` | `VAL_INVALID_INPUT` | Cannot approve product without at least one active product image. | Duyệt bán sản phẩm nhưng sản phẩm chưa có ảnh nào hoạt động |
-| `400 Bad Request` | `PRODUCT_ALREADY_AUCTIONED` | Auctioned products are permanently locked and cannot be moderated. | Cố gắng duyệt/khóa sản phẩm đã hoàn tất đấu giá |
-| `401 Unauthorized` | `UNAUTHORIZED` | User identifier is missing or invalid. | Thiếu `X-User-Id` hợp lệ |
-| `403 Forbidden` | `FORBIDDEN` | Access denied. Required role: admin, staff. | Người dùng không có vai trò `admin` hoặc `staff` |
-| `404 Not Found` | `PRODUCT_NOT_FOUND` | Product with ID '{id}' was not found. | Không tìm thấy sản phẩm hoặc sản phẩm đã bị xóa mềm |
-| `500 Internal Error` | `INTERNAL_SERVER_ERROR` | An unexpected error occurred. | Lỗi cơ sở dữ liệu hoặc hệ thống |
 
+| HTTP Status | Error Code | Detail Message (Sentence case) | Điều kiện phát sinh |
+| :---: | :--- | :--- | :--- |
+| `400 Bad Request` | `VAL_INVALID_INPUT` | `Action is required. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK, BAN.` | Trường `action` rỗng hoặc mang giá trị không hợp lệ |
+| `400 Bad Request` | `VAL_INVALID_INPUT` | `Cannot approve product without at least one active variant with valid price.` | Duyệt bán sản phẩm nhưng chưa tạo variant hoạt động hoặc thiếu giá |
+| `400 Bad Request` | `VAL_INVALID_INPUT` | `Cannot approve product without at least one active product image.` | Duyệt bán sản phẩm nhưng sản phẩm chưa có ảnh nào hoạt động |
+| `400 Bad Request` | `PRODUCT_ALREADY_BANNED` | `This product has already been permanently banned and cannot be re-activated.` | Cố gắng duyệt (`APPROVE`/`UNLOCK`) lại một sản phẩm đã bị cấm vĩnh viễn |
+| `400 Bad Request` | `PRODUCT_ALREADY_AUCTIONED` | `Auctioned products are permanently locked and cannot be moderated.` | Cố gắng duyệt/khóa sản phẩm đã hoàn tất đấu giá |
+| `401 Unauthorized` | `UNAUTHORIZED` | `Authentication is required to access this resource.` | Không gửi kèm token hoặc thiếu `X-User-Id` |
+| `403 Forbidden` | `FORBIDDEN` | `You do not have permission to access or modify this resource.` | Token không có role `admin` hoặc `staff` |
+| `404 Not Found` | `PRODUCT_NOT_FOUND` | `Product not found in the system.` | Không tìm thấy sản phẩm với `id` tương ứng |

@@ -13,7 +13,6 @@ using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
 [Route("api/v1/admin/products")]
-[Route("api/v1/products/admin")]
 [Produces("application/json")]
 public class AdminProductsController : ControllerBase
 {
@@ -64,7 +63,7 @@ public class AdminProductsController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>Moderates product: approve, suspend, reject, or unlock. Locks product when suspended (CAT-51).</summary>
+    /// <summary>Moderates product: approve, suspend, reject, unlock, or ban (CAT-51).</summary>
     [HttpPatch("{id:guid}/moderate")]
     [RequireRole("admin", "staff")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
@@ -84,7 +83,7 @@ public class AdminProductsController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request?.Action))
         {
-            return this.BadRequestError("VAL_INVALID_INPUT", "Action is required. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK.");
+            return this.BadRequestError("VAL_INVALID_INPUT", "Action is required. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK, BAN.");
         }
 
         var updated = await _productService.ModerateProductAsync(id, request, adminId, ct);

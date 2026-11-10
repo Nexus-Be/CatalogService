@@ -24,4 +24,5 @@ public class Product : AuditableEntity<Guid>
     public ProductRatingStats? RatingStats { get; set; }
     public ICollection<PurchaseRecord> PurchaseRecords { get; set; } = new List<PurchaseRecord>();
     public ICollection<ProductReview> Reviews { get; set; } = new List<ProductReview>();
+    public ICollection<ProductReport> Reports { get; set; } = new List<ProductReport>();
 }

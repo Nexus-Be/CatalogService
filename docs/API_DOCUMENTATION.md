@@ -10,7 +10,7 @@
 
 ---
 
-## 📌 MỤC LỤC DANH SÁCH 41 ENDPOINTS
+## 📌 MỤC LỤC DANH SÁCH 51 ENDPOINTS
 
 | STT | Phương thức | Endpoint Route | Controller & Action | Nhóm nghiệp vụ |
 | :---: | :---: | :--- | :--- | :--- |
@@ -48,13 +48,23 @@
 | **32** | `GET` | `/api/v1/products/auctions/{id}` | `ProductsController.GetAuctionDetail` | Phân hệ Đấu giá (CAT-47) |
 | **33** | `GET` | `/api/v1/seller/products/auctions` | `SellerProductsController.SearchSellerAuctions` | Phân hệ Đấu giá (CAT-48) |
 | **34** | `PATCH` | `/api/v1/products/auctions/{id}/status` | `ProductsController.ChangeAuctionStatus` | Phân hệ Đấu giá (CAT-49) |
-| **35** | `GET` | `/api/v1/admin/products` & `/api/v1/products/admin` (Alias) | `AdminProductsController.SearchAdminProducts` | Phân hệ Quản trị & Giám sát (CAT-50) |
-| **36** | `PATCH` | `/api/v1/admin/products/{id}/moderate` & `/api/v1/products/admin/{id}/moderate` (Alias) | `AdminProductsController.ModerateProduct` | Phân hệ Quản trị & Giám sát (CAT-51) |
+| **35** | `GET` | `/api/v1/admin/products` | `AdminProductsController.SearchAdminProducts` | Phân hệ Quản trị & Giám sát (CAT-50) |
+| **36** | `PATCH` | `/api/v1/admin/products/{id}/moderate` | `AdminProductsController.ModerateProduct` | Phân hệ Quản trị & Giám sát (CAT-51) |
 | **37** | `GET` | `/api/v1/internal/products/{id}/auction-eligibility` | `InternalProductsController.CheckAuctionEligibility` | Liên Service Auction (CAT-52) |
 | **38** | `POST` | `/api/v1/internal/products/{id}/lock-auction` | `InternalProductsController.LockForAuction` | Liên Service Auction (CAT-53) |
 | **39** | `POST` | `/api/v1/internal/products/{id}/unlock-auction` | `InternalProductsController.UnlockFromAuction` | Liên Service Auction (CAT-54) |
 | **40** | `POST` | `/api/v1/internal/products/{id}/mark-auctioned` | `InternalProductsController.MarkAsAuctioned` | Liên Service Auction (CAT-55) |
 | **41** | `POST` | `/api/v1/internal/products/{id}/revert-auctioned` | `InternalProductsController.RevertAuctioned` | Liên Service Auction (CAT-56) |
+| **42** | `POST` | `/api/v1/products/{id}/reports` | `ProductReportsController.SubmitReport` | Tố cáo & Giám sát vi phạm (CAT-57) |
+| **43** | `GET` | `/api/v1/admin/reports/products` | `AdminProductReportsController.GetReports` | Hàng đợi kiểm duyệt Tố cáo (CAT-58) |
+| **44** | `PUT` | `/api/v1/admin/reports/products/{reportId}/action` | `AdminProductReportsController.ModerateReport` | Xử lý Tố cáo & Cấm vi phạm (CAT-59) |
+| **45** | `GET` | `/api/v1/products/{id}/rating-summary` | `ProductReviewsController.GetRatingSummary` | Đánh giá & Xếp hạng (CAT-60) |
+| **46** | `GET` | `/api/v1/products/{id}/reviews` | `ProductReviewsController.GetProductReviews` | Đánh giá & Xếp hạng (CAT-61) |
+| **47** | `POST` | `/api/v1/products/{id}/reviews` | `ProductReviewsController.CreateReview` | Đánh giá & Xếp hạng (CAT-62) |
+| **48** | `PUT` | `/api/v1/reviews/{id}` | `ReviewsController.UpdateReview` | Đánh giá & Xếp hạng (CAT-63) |
+| **49** | `DELETE` | `/api/v1/reviews/{id}` | `ReviewsController.DeleteReview` | Đánh giá & Xếp hạng (CAT-64) |
+| **50** | `PATCH` | `/api/v1/admin/reviews/{id}/moderate` | `AdminReviewsController.ModerateReview` | Kiểm duyệt Đánh giá (CAT-65) |
+| **51** | `POST` | `/api/v1/internal/purchases` | `InternalPurchasesController.SyncPurchase` | Đồng bộ Đơn mua (CAT-66) |
 
 ---
 
@@ -910,7 +920,7 @@
 
 ### API 35. `GET /api/v1/admin/products` — Quản trị viên giám sát toàn bộ sản phẩm sàn [CAT-50]
 - **Quyền hạn:** `[RequireRole("admin", "staff")]`.
-- **Endpoint Route:** `/api/v1/admin/products` (và alias `/api/v1/products/admin` tương thích YARP Gateway).
+- **Endpoint Route:** `/api/v1/admin/products` (Canonical route duy nhất cho Admin/Staff).
 - **Mô tả:** Hỗ trợ lọc nâng cao theo `sellerId`, `status`, `statusReason` (`AdminLocked`, `SellerPaused`...), `saleType`, `categoryId`, từ khóa tìm kiếm.
 - **Tài liệu chi tiết:** Xem [`GET_admin_products.md`](api/Products/GET_admin_products.md).
 
@@ -918,10 +928,11 @@
 
 ### API 36. `PATCH /api/v1/admin/products/{id}/moderate` — Admin/Staff duyệt hoặc khóa sản phẩm [CAT-51]
 - **Quyền hạn:** `[RequireRole("admin", "staff")]`, bắt buộc `X-User-Id`.
-- **Endpoint Route:** `/api/v1/admin/products/{id}/moderate` (và alias `/api/v1/products/admin/{id}/moderate`).
+- **Endpoint Route:** `/api/v1/admin/products/{id}/moderate` (Canonical route duy nhất cho Admin/Staff).
 - **Mô tả:**
   - `APPROVE` / `UNLOCK`: Cho phép sản phẩm lên sàn bán (`Status = Active`, xóa `StatusReason`). Yêu cầu tối thiểu 1 variant và 1 ảnh hợp lệ.
   - `SUSPEND` / `REJECT`: Cưỡng chế dừng bán (`Status = Inactive`, `StatusReason = AdminLocked`, tự động tắt toàn bộ variants). Chặn Seller tự ý mở khóa.
+  - `BAN` (Bổ sung mới): Cấm vĩnh viễn sản phẩm khỏi sàn (`Status = Banned`, xóa `StatusReason`), vô hiệu hóa triệt để toàn bộ variants, tự động đóng toàn bộ đơn tố cáo đang chờ trong `ProductReports`, cấm Seller chỉnh sửa hoặc kích hoạt lại.
   - Tự động ghi lại vết lịch sử vào bảng `audit_logs`.
 - **Tài liệu chi tiết:** Xem [`PATCH_admin_products_id_moderate.md`](api/Products/PATCH_admin_products_id_moderate.md).
 
@@ -968,3 +979,91 @@
 - **Endpoint Route:** `/api/v1/internal/products/{id}/revert-auctioned`
 - **Mô tả:** Chuyển trạng thái sản phẩm từ `Auctioned` quay về `Active` khi đơn hàng bị Seller từ chối sau thanh toán hoặc giao dịch bị hủy/hoàn tiền. Cho phép Seller quản lý và đưa sản phẩm vào phiên đấu giá mới. Hỗ trợ Idempotent và ghi vết lý do vào `audit_logs`.
 - **Tài liệu chi tiết:** Xem [`POST_internal_products_id_revert_auctioned.md`](api/Internal/POST_internal_products_id_revert_auctioned.md) và hợp đồng liên service [`AUCTION_INTER_SERVICE_CONTRACT.md`](api/Internal/AUCTION_INTER_SERVICE_CONTRACT.md).
+
+---
+
+## 🛡️ PHẦN I: PHÂN HỆ TỐ CÁO & XỬ LÝ VI PHẠM (PRODUCT REPORTS & BANNING)
+
+---
+
+### API 42. `POST /api/v1/products/{id}/reports` — Người dùng gửi đơn tố cáo sản phẩm vi phạm [CAT-57]
+- **Quyền hạn:** `[RequireRole("buyer", "seller")]`, bắt buộc `X-User-Id`.
+- **Endpoint Route:** `/api/v1/products/{id}/reports`
+- **Mô tả:** Khách hàng hoặc đối tác gửi báo cáo vi phạm chính sách của một sản phẩm (hàng giả, hàng cấm, sai mô tả, phản cảm, v.v.). Hệ thống tự động chống spam trùng lặp cho mỗi người dùng và sản phẩm khi đơn cũ còn đang được xử lý.
+- **Tài liệu chi tiết:** Xem [`POST_PRODUCTS_ID_REPORTS.md`](api/Reports/POST_PRODUCTS_ID_REPORTS.md).
+
+---
+
+### API 43. `GET /api/v1/admin/reports/products` — Admin/Staff xem hàng đợi các đơn tố cáo vi phạm [CAT-58]
+- **Quyền hạn:** `[RequireRole("admin", "staff")]`, bắt buộc `X-User-Id`.
+- **Endpoint Route:** `/api/v1/admin/reports/products` (Canonical route duy nhất cho Admin/Staff).
+- **Mô tả:** Trả về danh sách phân trang các đơn tố cáo vi phạm sản phẩm trong hàng đợi kiểm duyệt, hỗ trợ lọc theo trạng thái (`Pending`, `Investigating`, `Resolved`, `Dismissed`), lọc theo lý do, theo sản phẩm hoặc người bán.
+- **Tài liệu chi tiết:** Xem [`GET_ADMIN_REPORTS_PRODUCTS.md`](api/Reports/GET_ADMIN_REPORTS_PRODUCTS.md).
+
+---
+
+### API 44. `PUT /api/v1/admin/reports/products/{reportId}/action` — Admin/Staff xử lý đơn tố cáo (Cấm sản phẩm hoặc Bác bỏ đơn) [CAT-59]
+- **Quyền hạn:** `[RequireRole("admin", "staff")]`, bắt buộc `X-User-Id`.
+- **Endpoint Route:** `/api/v1/admin/reports/products/{reportId}/action` (Canonical route duy nhất cho Admin/Staff).
+- **Mô tả:** Thực hiện phán quyết kiểm duyệt cho đơn tố cáo. Nếu chọn `BAN_PRODUCT`, hệ thống tự động chuyển trạng thái sản phẩm sang `Banned`, tắt toàn bộ biến thể, giải quyết toàn bộ các đơn tố cáo đang chờ của sản phẩm đó và ghi vết kiểm toán `AuditLog`. Nếu chọn `DISMISS`, bác bỏ tố cáo sai sự thật.
+- **Tài liệu chi tiết:** Xem [`PUT_ADMIN_REPORTS_ID_ACTION.md`](api/Reports/PUT_ADMIN_REPORTS_ID_ACTION.md).
+
+---
+
+## ⭐ PHẦN J: PHÂN HỆ ĐÁNH GIÁ & XẾP HẠNG SẢN PHẨM (PRODUCT REVIEWS & RATINGS)
+
+---
+
+### API 45. `GET /api/v1/products/{id}/rating-summary` — Xem tổng quan điểm trung bình và phân phối sao [CAT-60]
+- **Quyền hạn:** `Public` (Công khai).
+- **Endpoint Route:** `/api/v1/products/{id}/rating-summary`
+- **Mô tả:** Trả về điểm trung bình (`avgRating`), tổng số lượt đánh giá (`reviewCount`), tổng điểm sao tích lũy (`starSum`), và bảng phân phối số lượng từng loại sao (5★, 4★, 3★, 2★, 1★).
+- **Tài liệu chi tiết:** Xem [`GET_PRODUCTS_ID_RATING_SUMMARY.md`](api/Reviews/GET_PRODUCTS_ID_RATING_SUMMARY.md).
+
+---
+
+### API 46. `GET /api/v1/products/{id}/reviews` — Xem danh sách đánh giá sản phẩm [CAT-61]
+- **Quyền hạn:** `Public` (Công khai).
+- **Endpoint Route:** `/api/v1/products/{id}/reviews`
+- **Mô tả:** Danh sách bài đánh giá đã duyệt (`Published`) có phân trang (`page`, `pageSize`), lọc theo số sao cụ thể (`rating: 1..5`), và sắp xếp (`newest`, `highest_rating`, `lowest_rating`).
+- **Tài liệu chi tiết:** Xem [`GET_PRODUCTS_ID_REVIEWS.md`](api/Reviews/GET_PRODUCTS_ID_REVIEWS.md).
+
+---
+
+### API 47. `POST /api/v1/products/{id}/reviews` — Người mua gửi đánh giá sản phẩm sau khi mua thành công [CAT-62]
+- **Quyền hạn:** `[RequireRole("buyer", "admin")]`, bắt buộc Token & `X-User-Id`.
+- **Endpoint Route:** `/api/v1/products/{id}/reviews`
+- **Mô tả:** Người mua gửi đánh giá kèm `orderId`, `rating` (1–5 sao), `comment`. Hệ thống xác thực đơn mua hàng (`PurchaseRecord`), chống đánh giá trùng lặp (`ALREADY_REVIEWED`), và tự động cập nhật nguyên tử thống kê `ProductRatingStats`.
+- **Tài liệu chi tiết:** Xem [`POST_PRODUCTS_ID_REVIEWS.md`](api/Reviews/POST_PRODUCTS_ID_REVIEWS.md).
+
+---
+
+### API 48. `PUT /api/v1/reviews/{id}` — Người mua chỉnh sửa đánh giá của chính mình [CAT-63]
+- **Quyền hạn:** `[RequireRole("buyer", "admin")]`, bắt buộc chính chủ sở hữu review (`BuyerId == currentUserId`).
+- **Endpoint Route:** `/api/v1/reviews/{id}`
+- **Mô tả:** Chỉnh sửa nhận xét hoặc điểm sao. Nếu điểm sao thay đổi, hệ thống tự động tính toán lại `StarSum` và `AvgRating` trong `ProductRatingStats`.
+- **Tài liệu chi tiết:** Xem [`PUT_REVIEWS_ID.md`](api/Reviews/PUT_REVIEWS_ID.md).
+
+---
+
+### API 49. `DELETE /api/v1/reviews/{id}` — Xóa bài đánh giá sản phẩm [CAT-64]
+- **Quyền hạn:** `[RequireRole("buyer", "admin")]`, bắt buộc chính chủ hoặc Admin.
+- **Endpoint Route:** `/api/v1/reviews/{id}`
+- **Mô tả:** Soft delete bài đánh giá (`IsDeleted = true`) và trừ điểm sao tương ứng ra khỏi `ProductRatingStats`.
+- **Tài liệu chi tiết:** Xem [`DELETE_REVIEWS_ID.md`](api/Reviews/DELETE_REVIEWS_ID.md).
+
+---
+
+### API 50. `PATCH /api/v1/admin/reviews/{id}/moderate` — Quản trị viên kiểm duyệt đánh giá [CAT-65]
+- **Quyền hạn:** `[RequireRole("admin")]`, bắt buộc Admin Token.
+- **Endpoint Route:** `/api/v1/admin/reviews/{id}/moderate`
+- **Mô tả:** Ẩn review vi phạm chuẩn mực (`HIDE`) hoặc khôi phục hiển thị (`PUBLISH`). Tự động loại trừ/cộng lại điểm sao trong `ProductRatingStats` và ghi vết kiểm toán `AuditLog`.
+- **Tài liệu chi tiết:** Xem [`PATCH_ADMIN_REVIEWS_ID_MODERATE.md`](api/Reviews/PATCH_ADMIN_REVIEWS_ID_MODERATE.md).
+
+---
+
+### API 51. `POST /api/v1/internal/purchases` — Đồng bộ đơn mua hoàn tất từ OrderService [CAT-66]
+- **Quyền hạn:** `Internal`.
+- **Endpoint Route:** `/api/v1/internal/purchases`
+- **Mô tả:** Nhận dữ liệu đơn hàng đã hoàn tất từ OrderService để lưu vào bảng `PurchaseRecords`, kích hoạt quyền đánh giá (Verified Purchase) cho Buyer. Hỗ trợ Idempotent.
+- **Tài liệu chi tiết:** Xem [`POST_INTERNAL_PURCHASES.md`](api/Reviews/POST_INTERNAL_PURCHASES.md).

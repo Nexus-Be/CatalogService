@@ -33,12 +33,28 @@ Sau khi rà soát các đề xuất sửa đổi từ phía Frontend nhằm chu�
 * **Ý nghĩa:** Đây là trường dữ liệu bắt buộc phục vụ việc tích hợp với đơn vị vận chuyển **Giao Hàng Nhanh (GHN)** để tính cước phí giao hàng và tạo vận đơn khi khách đặt mua.
 * **Định dạng dữ liệu:**
   * Kiểu dữ liệu: Số nguyên (`int`, đơn vị: **Gram**).
-  * Ràng buộc: Giá trị phải $> 0$ (Ví dụ: `350` g, `500` g, `1200` g).
-* **Các Endpoint bắt buộc truyền `weightGrams`:**
-  1. `POST /api/v1/products`: Truyền `weightGrams` ở cấp sản phẩm cha và trong từng phần tử của mảng `variants`.
-  2. `POST /api/v1/products/auction`: Bắt buộc truyền `weightGrams`.
-  3. `POST /api/v1/products/{id}/variants`: Bắt buộc truyền `weightGrams` khi thêm biến thể mới.
-  4. `PUT /api/v1/products/{id}` & `PUT /api/v1/variants/{id}`: Hỗ trợ cập nhật `weightGrams`.
+  * Ràng buộc: Giá trị phải $> 0$ (Ví dụ: `250` g, `500` g, `1200` g).
+
+#### 🔍 Cơ chế Thừa kế Tự động giữa Cấp Cha (`Product`) và Cấp Con (`Variant`):
+Backend Catalog áp dụng công thức:  
+$$\text{Weight của Variant} = \text{variant.WeightGrams} \ \mathbf{??} \ \text{product.WeightGrams}$$
+
+| Cấp độ | Mức độ Bắt buộc | Cách thức hoạt động | Khuyến nghị Thiết kế UI cho Frontend |
+| :--- | :---: | :--- | :--- |
+| **Cấp Cha** (`Product.weightGrams`) | **BẮT BUỘC NÊN CÓ** *(Khuyên dùng chính)* | Là khối lượng chuẩn của sản phẩm. Toàn bộ các biến thể con bên dưới nếu **không điền** sẽ **tự động thừa kế** giá trị này. | Trên Form tạo sản phẩm, FE chỉ cần đặt **1 ô duy nhất "Khối lượng (gram)" ở phần Thông tin chung**. Không cần bắt người bán gõ lại ở từng biến thể. |
+| **Cấp Con** (`Variant.weightGrams`) | **TÙY CHỌN (Optional)** | Dùng để **ghi đè (override)** cân nặng của cha. Chỉ điền khi các size/loại có trọng lượng khác nhau rõ rệt. | Ở bảng danh sách biến thể con, cột khối lượng có thể cho phép **bỏ trống** (placeholder hiển thị: *"Mặc định theo sản phẩm"*). |
+
+> ⚠️ **Quy tắc cốt tử:** **Không được để trống cả Cha lẫn Con**. Ít nhất phải có giá trị ở cấp Cha. Nếu cả 2 đều `null`, khi khách mua hàng, đơn vị vận chuyển GHN sẽ từ chối tính cước và không in được vận đơn!
+
+#### 📌 Quy tắc theo từng loại sản phẩm:
+1. **Sản phẩm bán lẻ thường (`SaleType = Regular`):**
+   * **Cách 1 (Tiện nhất cho UI):** Điền `weightGrams` ở cấp Cha. Mảng `variants` bên dưới không cần truyền `weightGrams` (hoặc để `null`), Catalog tự động gán cân nặng của Cha cho toàn bộ biến thể.
+   * **Cách 2 (Chi tiết):** Điền `weightGrams` ở cấp Cha và điền thêm `weightGrams` ở từng biến thể cần ghi đè (ví dụ: chai 500ml nặng 600g, chai 1000ml nặng 1100g).
+2. **Sản phẩm đấu giá (`SaleType = Auction`):**
+   * **Bắt buộc 100% ở cấp Cha.** Vì sản phẩm đấu giá là hiện vật độc bản duy nhất (1-of-1), không có mảng biến thể ngoài. Form tạo đấu giá bắt buộc validate ô `weightGrams > 0`.
+3. **Thêm biến thể lẻ sau này (`POST /api/v1/products/{id}/variants`):**
+   * Nếu gửi `weightGrams`: Lưu giá trị mới đó.
+   * Nếu không gửi: Catalog tự động lấy lại cân nặng của sản phẩm Cha đã có trong DB.
 
 ---
 
@@ -73,7 +89,6 @@ Sau khi rà soát các đề xuất sửa đổi từ phía Frontend nhằm chu�
       "name": "Ao Thun Den - Size M",
       "price": 189000,
       "currency": "VND",
-      "weightGrams": 250,
       "attributes": [
         { "attrName": "Color", "attrValue": "Black" },
         { "attrName": "Size", "attrValue": "M" }
@@ -92,6 +107,8 @@ Sau khi rà soát các đề xuất sửa đổi từ phía Frontend nhằm chu�
     }
   ]
 }
+```
+*(Ghi chú: Biến thể Size M không truyền `weightGrams` $\rightarrow$ Tự động thừa kế `250` g từ sản phẩm cha. Biến thể Size L truyền `weightGrams: 270` $\rightarrow$ Ghi đè lấy `270` g).*
 ```
 *(Lưu ý: Tuyệt đối không có trường `warehouseId` trong từng biến thể).*
 
@@ -157,3 +174,4 @@ git pull origin dev
 ```
 
 Nếu có bất kỳ thắc mắc nào trong quá trình kết nối API, vui lòng liên hệ đội ngũ Catalog Service để được hỗ trợ kiểm tra trực tiếp.
+

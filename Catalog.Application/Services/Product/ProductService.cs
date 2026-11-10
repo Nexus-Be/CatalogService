@@ -649,6 +649,11 @@ public sealed class ProductService : IProductService
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to modify this product.", 403);
         }
 
+        if (product.Status == ProductStatus.Banned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_BANNED", "Cannot modify a banned product.");
+        }
+
         if (product.Status == ProductStatus.InAuction)
         {
             throw new BusinessRuleValidationException("PRODUCT_IN_AUCTION", "Product is currently in an active auction and cannot be modified.");
@@ -771,6 +776,11 @@ public sealed class ProductService : IProductService
         if (product.SellerId != currentUserId)
         {
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to modify this product.", 403);
+        }
+
+        if (product.Status == ProductStatus.Banned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_BANNED", "This product has been permanently banned and cannot change status.");
         }
 
         if (product.Status == ProductStatus.InAuction)
@@ -918,6 +928,11 @@ public sealed class ProductService : IProductService
         if (product.SellerId != currentUserId)
         {
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to delete this product.", 403);
+        }
+
+        if (product.Status == ProductStatus.Banned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_BANNED", "Banned products cannot be deleted.");
         }
 
         if (product.Status == ProductStatus.InAuction)
@@ -2575,7 +2590,7 @@ public sealed class ProductService : IProductService
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Action))
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Action is required. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK.");
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Action is required. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK, BAN.");
         }
 
         var product = await _dbContext.Products
@@ -2590,6 +2605,12 @@ public sealed class ProductService : IProductService
         }
 
         var action = request.Action.Trim().ToUpperInvariant();
+
+        if (product.Status == ProductStatus.Banned && action != "BAN")
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_BANNED", "This product has already been permanently banned and cannot be re-activated.");
+        }
+
         var oldStatus = product.Status;
         var oldReason = product.StatusReason;
         var now = DateTimeOffset.UtcNow;
@@ -2646,16 +2667,46 @@ public sealed class ProductService : IProductService
                 v.Status = VariantStatus.Inactive;
             }
         }
+        else if (action == "BAN")
+        {
+            product.Status = ProductStatus.Banned;
+            product.StatusReason = null;
+
+            // Deactivate variants
+            foreach (var v in product.Variants.Where(v => !v.IsDeleted))
+            {
+                v.Status = VariantStatus.Inactive;
+                v.IsActive = false;
+            }
+
+            // Auto-resolve pending/investigating reports for this product
+            var pendingReports = await _dbContext.ProductReports
+                .Where(r => r.ProductId == product.Id 
+                         && (r.Status == ReportStatus.Pending || r.Status == ReportStatus.Investigating)
+                         && !r.IsDeleted)
+                .ToListAsync(cancellationToken);
+
+            foreach (var r in pendingReports)
+            {
+                r.Status = ReportStatus.Resolved;
+                r.ReviewedBy = adminId;
+                r.ReviewedAt = now;
+                r.ResolutionNote = "Product permanently banned by administration: " + request.Note;
+                r.UpdatedAt = now;
+            }
+        }
         else
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Unknown action '{request.Action}'. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK.");
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Unknown action '{request.Action}'. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK, BAN.");
         }
 
         product.UpdatedAt = now;
         product.UpdatedBy = adminId;
 
+        var auditAction = action == "BAN" ? AuditAction.ProductBan : AuditAction.ProductUpdate;
+
         _dbContext.AddAuditLog(
-            AuditAction.ProductUpdate,
+            auditAction,
             "Product",
             product.Id.ToString(),
             oldValues: new { Status = oldStatus.ToString(), Reason = oldReason?.ToString() },
@@ -2706,6 +2757,17 @@ public sealed class ProductService : IProductService
                 ProductId: id,
                 IsEligible: false,
                 Reason: "Product is not registered as an auction product.",
+                Status: product.Status.ToString(),
+                SkuCode: product.Variants.FirstOrDefault()?.SkuCode,
+                WeightGrams: product.WeightGrams);
+        }
+
+        if (product.Status == ProductStatus.Banned)
+        {
+            return new AuctionEligibilityResponse(
+                ProductId: id,
+                IsEligible: false,
+                Reason: "Product has been permanently banned.",
                 Status: product.Status.ToString(),
                 SkuCode: product.Variants.FirstOrDefault()?.SkuCode,
                 WeightGrams: product.WeightGrams);
