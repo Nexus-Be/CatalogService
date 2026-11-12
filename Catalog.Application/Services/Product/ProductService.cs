@@ -22,17 +22,20 @@ public sealed class ProductService : IProductService
     private readonly IFulfillmentClient _fulfillmentClient;
     private readonly IImageStorageService _imageStorageService;
     private readonly IUserClient _userClient;
+    private readonly INotificationClient _notificationClient;
 
     public ProductService(
         ICatalogDbContext dbContext,
         IFulfillmentClient fulfillmentClient,
         IImageStorageService imageStorageService,
-        IUserClient userClient)
+        IUserClient userClient,
+        INotificationClient notificationClient)
     {
         _dbContext = dbContext;
         _fulfillmentClient = fulfillmentClient;
         _imageStorageService = imageStorageService;
         _userClient = userClient;
+        _notificationClient = notificationClient;
     }
 
     // -------------------------------------------------------------
@@ -649,6 +652,11 @@ public sealed class ProductService : IProductService
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to modify this product.", 403);
         }
 
+        if (product.Status == ProductStatus.Banned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_BANNED", "Cannot modify a banned product.");
+        }
+
         if (product.Status == ProductStatus.InAuction)
         {
             throw new BusinessRuleValidationException("PRODUCT_IN_AUCTION", "Product is currently in an active auction and cannot be modified.");
@@ -754,12 +762,17 @@ public sealed class ProductService : IProductService
             product.WeightGrams);
     }
 
-    public async Task<ProductDto> ChangeStatusAsync(Guid id, ChangeProductStatusRequest request, Guid currentUserId, CancellationToken cancellationToken = default)
+    public async Task<ProductDto> ChangeStatusAsync(
+        Guid id,
+        ChangeProductStatusRequest request,
+        Guid currentUserId,
+        bool isAdminOrStaff = false,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request?.Status) ||
             !Enum.TryParse<ProductStatus>(request.Status, true, out var newStatus))
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Invalid status value. Allowed values are DRAFT, ACTIVE, INACTIVE, AUCTIONED.");
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Invalid status value. Allowed values are DRAFT, ACTIVE, INACTIVE, AUCTIONED, PENDING_APPROVAL.");
         }
 
         var product = await _dbContext.Products
@@ -768,9 +781,14 @@ public sealed class ProductService : IProductService
             .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, cancellationToken)
             ?? throw new EntityNotFoundException("PRODUCT_NOT_FOUND", "Product", id);
 
-        if (product.SellerId != currentUserId)
+        if (!isAdminOrStaff && product.SellerId != currentUserId)
         {
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to modify this product.", 403);
+        }
+
+        if (product.Status == ProductStatus.Banned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_BANNED", "This product has been permanently banned and cannot change status.");
         }
 
         if (product.Status == ProductStatus.InAuction)
@@ -785,6 +803,14 @@ public sealed class ProductService : IProductService
 
         if (newStatus == ProductStatus.Active)
         {
+            if (!isAdminOrStaff)
+            {
+                throw new BusinessRuleValidationException(
+                    "APPROVAL_REQUIRED",
+                    "Sellers cannot directly activate products. Products must be approved by an administrator or staff member before going live. Please set status to PENDING_APPROVAL.",
+                    403);
+            }
+
             if (product.StatusReason == ProductInactiveReason.AdminLocked)
             {
                 throw new BusinessRuleValidationException("PRODUCT_LOCKED_BY_ADMIN", "This product was suspended by administrator and cannot be reactivated by seller. Please contact support.");
@@ -825,6 +851,56 @@ public sealed class ProductService : IProductService
             }
 
             product.PublishedAt ??= DateTimeOffset.UtcNow;
+            product.StatusReason = null;
+        }
+        else if (newStatus == ProductStatus.PendingApproval)
+        {
+            if (product.StatusReason == ProductInactiveReason.AdminLocked)
+            {
+                throw new BusinessRuleValidationException("PRODUCT_LOCKED_BY_ADMIN", "This product was suspended by administrator and cannot be submitted for approval. Please contact support.");
+            }
+
+            // Ensure non-deleted variants with valid price are active for approval review
+            foreach (var v in product.Variants.Where(v => !v.IsDeleted && (product.SaleType == SaleType.Auction || (v.Price.HasValue && v.Price.Value > 0))))
+            {
+                v.Status = VariantStatus.Active;
+            }
+
+            var hasActiveVariant = product.Variants.Any(v => !v.IsDeleted && v.Status == VariantStatus.Active && (product.SaleType == SaleType.Auction || (v.Price.HasValue && v.Price.Value > 0)));
+            if (!hasActiveVariant)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot submit product for approval without at least one active variant with a valid price.");
+            }
+
+            var hasActiveImage = product.Images.Any(i => !i.IsDeleted && i.IsActive);
+            if (!hasActiveImage)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot submit product for approval without at least one active product image.");
+            }
+
+            if (product.SaleType == SaleType.Auction)
+            {
+                if (!product.WeightGrams.HasValue || product.WeightGrams.Value <= 0)
+                {
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot submit auction product for approval without valid shipping weight. Product must declare WeightGrams greater than 0.");
+                }
+            }
+            else
+            {
+                var productHasWeight = product.WeightGrams.HasValue && product.WeightGrams.Value > 0;
+                if (!productHasWeight)
+                {
+                    var variantsMissingWeight = product.Variants
+                        .Where(v => !v.IsDeleted && v.Status == VariantStatus.Active)
+                        .Any(v => !v.WeightGrams.HasValue || v.WeightGrams.Value <= 0);
+
+                    if (variantsMissingWeight)
+                    {
+                        throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot submit product for approval without valid shipping weight. Either declare WeightGrams on product or provide WeightGrams greater than 0 for all active variants.");
+                    }
+                }
+            }
+
             product.StatusReason = null;
         }
         else if (newStatus == ProductStatus.Inactive)
@@ -873,30 +949,6 @@ public sealed class ProductService : IProductService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        // Initialize physical warehouse inventory only when transitioning to ACTIVE for Regular products
-        if (oldStatus != ProductStatus.Active && newStatus == ProductStatus.Active && product.SaleType == SaleType.Regular)
-        {
-            var activeVariants = product.Variants
-                .Where(v => !v.IsDeleted && v.Status == VariantStatus.Active)
-                .ToList();
-
-            foreach (var variant in activeVariants)
-            {
-                try
-                {
-                    await _fulfillmentClient.InitializeInventoryForSkuAsync(
-                        variant.Id,
-                        product.SellerId,
-                        initialQuantity: 0,
-                        cancellationToken: cancellationToken);
-                }
-                catch
-                {
-                    // Non-blocking: Fulfillment logging or connection failure should not abort product activation
-                }
-            }
-        }
-
         return new ProductDto(
             product.Id,
             product.SellerId,
@@ -918,6 +970,11 @@ public sealed class ProductService : IProductService
         if (product.SellerId != currentUserId)
         {
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to delete this product.", 403);
+        }
+
+        if (product.Status == ProductStatus.Banned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_BANNED", "Banned products cannot be deleted.");
         }
 
         if (product.Status == ProductStatus.InAuction)
@@ -1966,6 +2023,31 @@ public sealed class ProductService : IProductService
             })
             .ToList();
 
+        string? rejectionReason = null;
+        if (product.StatusReason == ProductInactiveReason.Rejected)
+        {
+            var lastAudit = await _dbContext.AuditLogs
+                .AsNoTracking()
+                .Where(a => a.EntityName == "Product" && a.EntityId == product.Id.ToString())
+                .OrderByDescending(a => a.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(lastAudit?.NewValues))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(lastAudit.NewValues);
+                    if (doc.RootElement.TryGetProperty("Note", out var noteProp) && !string.IsNullOrWhiteSpace(noteProp.GetString()))
+                    {
+                        rejectionReason = noteProp.GetString();
+                    }
+                }
+                catch
+                {
+                }
+            }
+        }
+
         return new SellerProductDetailDto(
             product.Id,
             product.SellerId,
@@ -1984,7 +2066,8 @@ public sealed class ProductService : IProductService
             product.PublishedAt,
             productImages,
             variantDtos,
-            product.WeightGrams);
+            product.WeightGrams,
+            rejectionReason);
     }
 
     // -------------------------------------------------------------
@@ -2458,7 +2541,7 @@ public sealed class ProductService : IProductService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "This operation is only valid for auction products.");
         }
 
-        return await ChangeStatusAsync(id, request, currentUserId, cancellationToken);
+        return await ChangeStatusAsync(id, request, currentUserId, cancellationToken: cancellationToken);
     }
 
     // -------------------------------------------------------------
@@ -2575,7 +2658,7 @@ public sealed class ProductService : IProductService
     {
         if (request == null || string.IsNullOrWhiteSpace(request.Action))
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Action is required. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK.");
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Action is required. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK, BAN.");
         }
 
         var product = await _dbContext.Products
@@ -2590,6 +2673,12 @@ public sealed class ProductService : IProductService
         }
 
         var action = request.Action.Trim().ToUpperInvariant();
+
+        if (product.Status == ProductStatus.Banned && action != "BAN")
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_BANNED", "This product has already been permanently banned and cannot be re-activated.");
+        }
+
         var oldStatus = product.Status;
         var oldReason = product.StatusReason;
         var now = DateTimeOffset.UtcNow;
@@ -2634,8 +2723,43 @@ public sealed class ProductService : IProductService
             product.Status = ProductStatus.Active;
             product.StatusReason = null;
             product.PublishedAt ??= now;
+
+            // Activate valid variants
+            foreach (var v in product.Variants.Where(v => !v.IsDeleted && (product.SaleType == SaleType.Auction || (v.Price.HasValue && v.Price.Value > 0))))
+            {
+                v.Status = VariantStatus.Active;
+            }
+
+            // Initialize physical warehouse inventory in FulfillmentService upon Admin/Staff approval
+            if (oldStatus != ProductStatus.Active && product.SaleType == SaleType.Regular)
+            {
+                var activeVariants = product.Variants
+                    .Where(v => !v.IsDeleted && v.Status == VariantStatus.Active)
+                    .ToList();
+
+                foreach (var variant in activeVariants)
+                {
+                    try
+                    {
+                        await _fulfillmentClient.InitializeInventoryForSkuAsync(
+                            variant.Id,
+                            product.SellerId,
+                            initialQuantity: 0,
+                            cancellationToken: cancellationToken);
+                    }
+                    catch
+                    {
+                        // Non-blocking: Fulfillment logging or connection failure should not abort product approval
+                    }
+                }
+            }
         }
-        else if (action == "SUSPEND" || action == "REJECT")
+        else if (action == "REJECT")
+        {
+            product.Status = ProductStatus.Draft;
+            product.StatusReason = ProductInactiveReason.Rejected;
+        }
+        else if (action == "SUSPEND")
         {
             product.Status = ProductStatus.Inactive;
             product.StatusReason = ProductInactiveReason.AdminLocked;
@@ -2646,16 +2770,46 @@ public sealed class ProductService : IProductService
                 v.Status = VariantStatus.Inactive;
             }
         }
+        else if (action == "BAN")
+        {
+            product.Status = ProductStatus.Banned;
+            product.StatusReason = null;
+
+            // Deactivate variants
+            foreach (var v in product.Variants.Where(v => !v.IsDeleted))
+            {
+                v.Status = VariantStatus.Inactive;
+                v.IsActive = false;
+            }
+
+            // Auto-resolve pending/investigating reports for this product
+            var pendingReports = await _dbContext.ProductReports
+                .Where(r => r.ProductId == product.Id 
+                         && (r.Status == ReportStatus.Pending || r.Status == ReportStatus.Investigating)
+                         && !r.IsDeleted)
+                .ToListAsync(cancellationToken);
+
+            foreach (var r in pendingReports)
+            {
+                r.Status = ReportStatus.Resolved;
+                r.ReviewedBy = adminId;
+                r.ReviewedAt = now;
+                r.ResolutionNote = "Product permanently banned by administration: " + request.Note;
+                r.UpdatedAt = now;
+            }
+        }
         else
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Unknown action '{request.Action}'. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK.");
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Unknown action '{request.Action}'. Allowed values: APPROVE, SUSPEND, REJECT, UNLOCK, BAN.");
         }
 
         product.UpdatedAt = now;
         product.UpdatedBy = adminId;
 
+        var auditAction = action == "BAN" ? AuditAction.ProductBan : AuditAction.ProductUpdate;
+
         _dbContext.AddAuditLog(
-            AuditAction.ProductUpdate,
+            auditAction,
             "Product",
             product.Id.ToString(),
             oldValues: new { Status = oldStatus.ToString(), Reason = oldReason?.ToString() },
@@ -2663,6 +2817,63 @@ public sealed class ProductService : IProductService
             userId: adminId.ToString());
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Deduct 10 reputation points from Seller when Product is banned due to violations (P2-06)
+        if (action == "BAN" && product.SellerId != Guid.Empty)
+        {
+            await _userClient.PenalizeSellerAsync(
+                product.SellerId,
+                penaltyPoints: 10,
+                reason: "PRODUCT_BANNED_SELLER",
+                referenceId: product.Id,
+                cancellationToken: cancellationToken);
+        }
+
+        // Send In-App notification to Seller regarding product moderation decision
+        if (product.SellerId != Guid.Empty)
+        {
+            var reasonText = request.Reason ?? request.Note ?? "Không có lý do chi tiết";
+            switch (action)
+            {
+                case "APPROVE":
+                case "UNLOCK":
+                    await _notificationClient.SendInAppNotificationAsync(
+                        product.SellerId,
+                        "Sản phẩm đã được phê duyệt thành công",
+                        $"Sản phẩm '{product.Name}' của bạn đã được kiểm duyệt đạt chuẩn và chính thức mở bán trên sàn.",
+                        "PRODUCT_APPROVED",
+                        $"{{\"productId\":\"{product.Id}\",\"status\":\"Active\"}}",
+                        cancellationToken);
+                    break;
+                case "REJECT":
+                    await _notificationClient.SendInAppNotificationAsync(
+                        product.SellerId,
+                        "Sản phẩm bị từ chối phê duyệt",
+                        $"Sản phẩm '{product.Name}' chưa đạt yêu cầu kiểm duyệt. Lý do: {reasonText}. Vui lòng cập nhật lại thông tin.",
+                        "PRODUCT_REJECTED",
+                        $"{{\"productId\":\"{product.Id}\",\"reason\":\"{reasonText}\",\"status\":\"Draft\"}}",
+                        cancellationToken);
+                    break;
+                case "SUSPEND":
+                    await _notificationClient.SendInAppNotificationAsync(
+                        product.SellerId,
+                        "Sản phẩm bị tạm dừng hiển thị",
+                        $"Sản phẩm '{product.Name}' đã bị tạm khóa do nghi vấn vi phạm hoặc chờ bổ sung chứng từ. Lý do: {reasonText}.",
+                        "PRODUCT_SUSPENDED",
+                        $"{{\"productId\":\"{product.Id}\",\"reason\":\"{reasonText}\",\"status\":\"Inactive\"}}",
+                        cancellationToken);
+                    break;
+                case "BAN":
+                    await _notificationClient.SendInAppNotificationAsync(
+                        product.SellerId,
+                        "CẢNH BÁO: Sản phẩm bị cấm vĩnh viễn và trừ 10 điểm uy tín",
+                        $"Sản phẩm '{product.Name}' đã bị gỡ bỏ vĩnh viễn khỏi hệ thống do vi phạm nghiêm trọng chính sách sàn. Tài khoản Shop bị phạt trừ 10 điểm uy tín. Lý do: {reasonText}.",
+                        "PRODUCT_BANNED",
+                        $"{{\"productId\":\"{product.Id}\",\"penaltyPoints\":10,\"status\":\"Banned\"}}",
+                        cancellationToken);
+                    break;
+            }
+        }
 
         return new ProductDto(
             product.Id,
@@ -2706,6 +2917,17 @@ public sealed class ProductService : IProductService
                 ProductId: id,
                 IsEligible: false,
                 Reason: "Product is not registered as an auction product.",
+                Status: product.Status.ToString(),
+                SkuCode: product.Variants.FirstOrDefault()?.SkuCode,
+                WeightGrams: product.WeightGrams);
+        }
+
+        if (product.Status == ProductStatus.Banned)
+        {
+            return new AuctionEligibilityResponse(
+                ProductId: id,
+                IsEligible: false,
+                Reason: "Product has been permanently banned.",
                 Status: product.Status.ToString(),
                 SkuCode: product.Variants.FirstOrDefault()?.SkuCode,
                 WeightGrams: product.WeightGrams);

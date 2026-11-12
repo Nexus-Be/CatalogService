@@ -1,4 +1,4 @@
-﻿# CATALOG SERVICE - POST /api/v1/products
+# CATALOG SERVICE - POST /api/v1/products
 
 > **Feature / Use Case:** Tạo sản phẩm thương mại thông thường ở trạng thái Draft [CAT-01] (Hỗ trợ tạo đơn bước hoặc kèm danh sách biến thể ban đầu)
 > **Trạng thái:** ✅ VERIFIED
@@ -14,7 +14,7 @@
 - **Quy tắc Sở hữu (Resource Ownership):** Cả Seller lẫn Admin chỉ được phép tạo sản phẩm cho chính mình (`sellerId == currentUserId`). Hệ thống cấm tuyệt đối việc tạo hộ sản phẩm cho người khác; nếu `sellerId` được gửi trong request body mà khác với `currentUserId`, hệ thống sẽ từ chối với mã lỗi `403 Forbidden` (`FORBIDDEN`).
 - **Controller:** `Catalog.Api/Controllers/Public/ProductsController.cs`
 - **Application Contract:** `Catalog.Application/Services/Product/IProductService.cs`
-- **Tương tác Liên Service:** Sản phẩm tạo ở trạng thái `DRAFT` **không gọi tạo kho** sang Fulfillment Service để tránh tạo kho chết. Tồn kho chỉ được khởi tạo khi sản phẩm được chuyển sang trạng thái `ACTIVE` (đối với sản phẩm Regular). Sản phẩm `Auction` không quản lý tồn kho và không gọi Fulfillment.
+- **Tương tác Liên Service:** Sản phẩm tạo ở trạng thái `DRAFT` **không gọi tạo kho** sang Fulfillment Service để tránh tạo kho chết. Tồn kho vật lý chỉ được khởi tạo khi sản phẩm được Quản trị viên/Nhân viên duyệt (`APPROVE`) đưa lên sàn (đối với sản phẩm Regular). Người bán sau khi tạo xong phải gửi yêu cầu duyệt qua `PendingApproval`. Sản phẩm `Auction` không quản lý tồn kho và không gọi Fulfillment.
 
 ---
 

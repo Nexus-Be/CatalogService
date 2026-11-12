@@ -157,7 +157,6 @@ public class ProductsController : ControllerBase
 
     /// <summary>Creates a new auction product in Draft status (CAT-43). Does not require variant price.</summary>
     [HttpPost("auction")]
-    [HttpPost("auctions")]
     [RequireRole("seller", "admin")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -248,7 +247,10 @@ public class ProductsController : ControllerBase
             return errorResult;
         }
 
-        var updated = await _productService.ChangeStatusAsync(id, request, currentUserId, ct);
+        var userRoles = this.GetUserRoles();
+        var isAdminOrStaff = userRoles.Any(r => r.Equals("admin", StringComparison.OrdinalIgnoreCase) || r.Equals("staff", StringComparison.OrdinalIgnoreCase));
+
+        var updated = await _productService.ChangeStatusAsync(id, request, currentUserId, isAdminOrStaff, ct);
         return Ok(updated);
     }
 

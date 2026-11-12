@@ -185,7 +185,8 @@ public sealed record SellerProductDetailDto(
     DateTimeOffset? PublishedAt,
     IReadOnlyList<ProductImageDto> Images,
     IReadOnlyList<SellerProductVariantDto> Variants,
-    int? WeightGrams = null);
+    int? WeightGrams = null,
+    string? RejectionReason = null);
 
 public sealed record BatchVariantItemDto(
     Guid VariantId,

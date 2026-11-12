@@ -22,9 +22,17 @@ public sealed class InternalServiceAuthHandler : DelegatingHandler
             ?? _configuration["INTERNAL_SERVICE_SECRET"]
             ?? _configuration["InternalSecurity:ServiceKey"];
 
-        if (!string.IsNullOrWhiteSpace(serviceKey) && !request.Headers.Contains(HeaderKeyInternalService))
+        if (!string.IsNullOrWhiteSpace(serviceKey))
         {
-            request.Headers.Add(HeaderKeyInternalService, serviceKey);
+            if (!request.Headers.Contains(HeaderKeyInternalService))
+            {
+                request.Headers.Add(HeaderKeyInternalService, serviceKey);
+            }
+
+            if (!request.Headers.Contains("x-service-key"))
+            {
+                request.Headers.Add("x-service-key", serviceKey);
+            }
         }
 
         return base.SendAsync(request, cancellationToken);

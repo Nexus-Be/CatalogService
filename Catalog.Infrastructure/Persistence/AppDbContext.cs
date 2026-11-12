@@ -18,6 +18,7 @@ public class AppDbContext : DbContext, ICatalogDbContext
     public DbSet<ProductRatingStats> ProductRatingStats => Set<ProductRatingStats>();
     public DbSet<PurchaseRecord> PurchaseRecords => Set<PurchaseRecord>();
     public DbSet<ProductReview> ProductReviews => Set<ProductReview>();
+    public DbSet<ProductReport> ProductReports => Set<ProductReport>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

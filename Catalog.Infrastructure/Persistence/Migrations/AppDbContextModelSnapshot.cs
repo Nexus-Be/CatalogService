@@ -598,6 +598,65 @@ namespace Catalog.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Catalog.Domain.Entities.ProductReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("EvidenceImages")
+                        .HasColumnType("jsonb");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ReporterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ResolutionNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId", "Status");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.ToTable("ProductReports");
+                });
+
             modelBuilder.Entity("Catalog.Domain.Entities.ProductReview", b =>
                 {
                     b.Property<Guid>("Id")
@@ -628,6 +687,9 @@ namespace Catalog.Infrastructure.Persistence.Migrations
 
                     b.Property<short>("Rating")
                         .HasColumnType("smallint");
+
+                    b.Property<string>("ReviewImages")
+                        .HasColumnType("jsonb");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -995,6 +1057,17 @@ namespace Catalog.Infrastructure.Persistence.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("Catalog.Domain.Entities.ProductReport", b =>
+                {
+                    b.HasOne("Catalog.Domain.Entities.Product", "Product")
+                        .WithMany("Reports")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+                });
+
             modelBuilder.Entity("Catalog.Domain.Entities.ProductReview", b =>
                 {
                     b.HasOne("Catalog.Domain.Entities.Product", "Product")
@@ -1061,6 +1134,8 @@ namespace Catalog.Infrastructure.Persistence.Migrations
                     b.Navigation("PurchaseRecords");
 
                     b.Navigation("RatingStats");
+
+                    b.Navigation("Reports");
 
                     b.Navigation("Reviews");
 

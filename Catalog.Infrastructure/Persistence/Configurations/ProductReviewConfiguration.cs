@@ -10,6 +10,7 @@ public class ProductReviewConfiguration : IEntityTypeConfiguration<ProductReview
     {
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Comment).HasMaxLength(2000);
+        builder.Property(x => x.ReviewImages).HasColumnType("jsonb");
 
         builder.HasOne(r => r.PurchaseRecord)
             .WithMany(pr => pr.ProductReviews)

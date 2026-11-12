@@ -8,6 +8,7 @@ using Catalog.Infrastructure.Persistence;
 using Catalog.Infrastructure.Services.Cloudinary;
 using Catalog.Infrastructure.Services.Common;
 using Catalog.Infrastructure.Services.Fulfillment;
+using Catalog.Infrastructure.Services.Notification;
 using Catalog.Infrastructure.Services.User;
 
 public static class DependencyInjection
@@ -67,6 +68,22 @@ public static class DependencyInjection
         services.AddHttpClient<IUserClient, UserClient>(client =>
         {
             client.BaseAddress = new Uri(userBaseUrl.TrimEnd('/') + "/");
+            client.Timeout = TimeSpan.FromSeconds(5);
+        })
+        .AddHttpMessageHandler<Services.Common.IdentityPropagationHandler>()
+        .AddHttpMessageHandler<InternalServiceAuthHandler>();
+
+        // Internal Notification Client (In-App Notifications)
+        var notificationBaseUrl = Environment.GetEnvironmentVariable("NOTIFICATION_SERVICE_URL")
+            ?? configuration["NOTIFICATION_SERVICE_URL"]
+            ?? configuration["Notification:BaseUrl"]
+            ?? configuration["Services:Notification:BaseUrl"]
+            ?? configuration["NotificationService:BaseUrl"]
+            ?? "http://localhost:8007/";
+
+        services.AddHttpClient<INotificationClient, NotificationClient>(client =>
+        {
+            client.BaseAddress = new Uri(notificationBaseUrl.TrimEnd('/') + "/");
             client.Timeout = TimeSpan.FromSeconds(5);
         })
         .AddHttpMessageHandler<Services.Common.IdentityPropagationHandler>()

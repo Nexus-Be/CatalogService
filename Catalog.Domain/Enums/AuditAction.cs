@@ -8,5 +8,7 @@ public enum AuditAction
     CategoryCreate = 3,
     CategoryUpdate = 4,
     CategoryDelete = 5,
-    ReviewModerate = 6
+    ReviewModerate = 6,
+    ProductReport = 7,
+    ProductBan = 8
 }
