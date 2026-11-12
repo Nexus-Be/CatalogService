@@ -1,6 +1,7 @@
 namespace Catalog.Application.Services.Review;
 
 using System;
+using System.Collections.Generic;
 
 public sealed record ProductReviewDto(
     Guid Id,
@@ -8,6 +9,7 @@ public sealed record ProductReviewDto(
     Guid BuyerId,
     short Rating,
     string? Comment,
+    List<string>? ReviewImages,
     string Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt = null

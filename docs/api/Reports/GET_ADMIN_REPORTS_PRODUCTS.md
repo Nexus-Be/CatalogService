@@ -1,8 +1,8 @@
 # CATALOG SERVICE - GET /api/v1/admin/reports/products
 
 > **Feature / Use Case:** Quản trị viên và Nhân viên xem danh sách hàng đợi các đơn tố cáo vi phạm sản phẩm [CAT-58]  
-> **Trạng thái:** ⏳ DRAFT (Pre-Code Specification)  
-> **Ngày tạo:** 2026-11-10  
+> **Trạng thái:** ✅ VERIFIED  
+> **Ngày cập nhật:** 2026-11-12  
 > **Tác giả:** Nexus Team & AI Agent  
 
 ---

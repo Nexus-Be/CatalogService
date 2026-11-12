@@ -1,8 +1,8 @@
 # CATALOG SERVICE - GET /api/v1/products/{id}/reviews
 
 > **Feature / Use Case:** Xem danh sách bài đánh giá của sản phẩm có phân trang, lọc theo số sao và sắp xếp [CAT-61]  
-> **Trạng thái:** ⏳ DRAFT (Pre-Code Specification)  
-> **Ngày tạo:** 2026-11-10  
+> **Trạng thái:** ✅ VERIFIED  
+> **Ngày cập nhật:** 2026-11-12  
 > **Tác giả:** Nexus Team & AI Agent  
 
 ---
@@ -62,6 +62,7 @@ public sealed record ProductReviewDto(
     Guid BuyerId,
     short Rating,
     string? Comment,
+    List<string>? ReviewImages,
     string Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt
@@ -73,13 +74,16 @@ public sealed record ProductReviewDto(
 {
   "items": [
     {
-      "id": "33500000-0000-0000-0000-000000000001",
-      "productId": "33000000-0000-0000-0000-000000000003",
+      "id": "488c5c33-0809-43ed-8418-8c9ebe1f66ab",
+      "productId": "f3f47581-6036-4fa1-b9fa-803770308c71",
       "buyerId": "dddddddd-4444-4444-4444-444444444444",
       "rating": 5,
-      "comment": "Ấm đun nước rất nhanh, giữ nhiệt tốt và điều khiển app tiện lợi.",
+      "comment": "Sản phẩm dùng rất tốt, ảnh chụp thực tế kèm theo đây.",
+      "reviewImages": [
+        "https://res.cloudinary.com/u6yxkkop/image/upload/v1794461553/nexus_catalog/reviews/ca7jjmsdz3fqviymurhm.png"
+      ],
       "status": "Published",
-      "createdAt": "2026-01-01T00:00:00Z",
+      "createdAt": "2026-11-12T05:32:31Z",
       "updatedAt": null
     }
   ],

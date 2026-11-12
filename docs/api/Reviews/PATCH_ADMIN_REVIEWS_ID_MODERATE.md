@@ -1,8 +1,8 @@
 # CATALOG SERVICE - PATCH /api/v1/admin/reviews/{id}/moderate
 
 > **Feature / Use Case:** Quản trị viên (Admin) kiểm duyệt bài đánh giá (Ẩn đánh giá vi phạm tiêu chuẩn hoặc Khôi phục hiển thị) [CAT-65]  
-> **Trạng thái:** ⏳ DRAFT (Pre-Code Specification)  
-> **Ngày tạo:** 2026-11-10  
+> **Trạng thái:** ✅ VERIFIED  
+> **Ngày cập nhật:** 2026-11-12  
 > **Tác giả:** Nexus Team & AI Agent  
 
 ---
@@ -81,6 +81,14 @@ public sealed record ModerateReviewRequest(
      - `EntityType = "ProductReview"`
      - `EntityId = id`
      - `Details = "Review status changed to {Status}. Reason: {Reason}"`
+4. **Phát thông báo In-App (Notification Integration):**
+   - Khi Admin thực hiện hành động `HIDE`: Hệ thống tự động gửi thông báo In-App tới tác giả đánh giá (`review.BuyerId`).
+     - **Người nhận:** `review.BuyerId` (Tác giả bài review)
+     - **NotificationType:** `REVIEW_HIDDEN`
+     - **Title:** `"Bài đánh giá của bạn đã bị ẩn"`
+     - **Body:** `"Bài đánh giá của bạn cho sản phẩm '{product.Name}' đã bị ẩn bởi Quản trị viên do vi phạm quy chuẩn cộng đồng. Ghi chú: {request.Reason}."`
+     - **Payload:** `{"reviewId": "...", "productId": "...", "reason": "..."}`
+   - Cơ chế phát thông báo là non-blocking: sự cố kết nối tới `NotificationService` không ảnh hưởng đến giao dịch kiểm duyệt.
 
 ---
 

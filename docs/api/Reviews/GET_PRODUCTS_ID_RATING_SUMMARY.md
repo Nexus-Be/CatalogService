@@ -1,8 +1,8 @@
 # CATALOG SERVICE - GET /api/v1/products/{id}/rating-summary
 
 > **Feature / Use Case:** Xem tổng quan điểm trung bình và phân phối xếp hạng sao của sản phẩm [CAT-60]  
-> **Trạng thái:** ⏳ DRAFT (Pre-Code Specification)  
-> **Ngày tạo:** 2026-11-10  
+> **Trạng thái:** ✅ VERIFIED  
+> **Ngày cập nhật:** 2026-11-12  
 > **Tác giả:** Nexus Team & AI Agent  
 
 ---

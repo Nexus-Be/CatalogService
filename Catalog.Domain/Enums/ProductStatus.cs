@@ -7,5 +7,6 @@ public enum ProductStatus
     Inactive = 2,
     Auctioned = 3,
     InAuction = 4,
-    Banned = 5
+    Banned = 5,
+    PendingApproval = 6
 }

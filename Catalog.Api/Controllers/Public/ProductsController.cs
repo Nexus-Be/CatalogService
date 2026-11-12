@@ -247,7 +247,10 @@ public class ProductsController : ControllerBase
             return errorResult;
         }
 
-        var updated = await _productService.ChangeStatusAsync(id, request, currentUserId, ct);
+        var userRoles = this.GetUserRoles();
+        var isAdminOrStaff = userRoles.Any(r => r.Equals("admin", StringComparison.OrdinalIgnoreCase) || r.Equals("staff", StringComparison.OrdinalIgnoreCase));
+
+        var updated = await _productService.ChangeStatusAsync(id, request, currentUserId, isAdminOrStaff, ct);
         return Ok(updated);
     }
 

@@ -19,5 +19,18 @@ public interface IUserClient
         Guid userId,
         string action = "sell",
         CancellationToken cancellationToken = default);
+
+    Task<bool> PenalizeSellerAsync(
+        Guid sellerId,
+        int penaltyPoints,
+        string reason,
+        Guid referenceId,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> AdjustReputationAsync(
+        Guid sellerId,
+        short ratingStar,
+        Guid orderId,
+        CancellationToken cancellationToken = default);
 }
 

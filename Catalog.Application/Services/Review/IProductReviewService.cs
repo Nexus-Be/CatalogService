@@ -20,12 +20,14 @@ public interface IProductReviewService
         Guid productId,
         CreateProductReviewRequest request,
         Guid currentUserId,
+        IReadOnlyList<FileUploadModel>? reviewImages = null,
         CancellationToken cancellationToken = default);
 
     Task<ProductReviewDto> UpdateReviewAsync(
         Guid reviewId,
         UpdateProductReviewRequest request,
         Guid currentUserId,
+        IReadOnlyList<FileUploadModel>? reviewImages = null,
         CancellationToken cancellationToken = default);
 
     Task DeleteReviewAsync(

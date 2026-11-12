@@ -1,4 +1,13 @@
 @Host = http://localhost:8002
+# @Host = http://localhost:5272
+
+@BuyerId = dddddddd-4444-4444-4444-444444444444
+@AdminId = aaaaaaaa-1111-1111-1111-111111111111
+@SellerId = cccccccc-3333-3333-3333-333333333333
+
+@Product1Id = 11000000-0000-0000-0000-000000000001
+@Product2Id = 22000000-0000-0000-0000-000000000002
+@Product3Id = 33000000-0000-0000-0000-000000000003
 
 ### 1. Health Check
 GET {{Host}}/health
@@ -7,3 +16,184 @@ Accept: application/json
 ### 2. Swagger OpenAPI Doc
 GET {{Host}}/swagger/v1/swagger.json
 Accept: application/json
+
+# ========================================================
+# ⭐ PHẦN A: TEST ĐÁNH GIÁ SẢN PHẨM (REVIEWS & RATINGS)
+# ========================================================
+
+### A1. Xem Rating ban đầu của Product 1 (Kỳ vọng: avgRating: null, reviewCount: 0)
+GET {{Host}}/api/v1/products/{{Product1Id}}/rating-summary
+Accept: application/json
+
+### A2. Buyer thử review khi CHƯA mua hàng (Kỳ vọng: 400 Bad Request - NOT_PURCHASED)
+POST {{Host}}/api/v1/products/{{Product1Id}}/reviews
+Content-Type: application/json
+x-user-id: {{BuyerId}}
+x-user-roles: buyer
+
+{
+  "orderId": "99000000-0000-0000-0000-000000000099",
+  "rating": 5,
+  "comment": "Chưa mua nhưng thử review"
+}
+
+### A3. Kích hoạt quyền đánh giá (Đồng bộ đơn mua từ CommerceService) (Kỳ vọng: 201 Created)
+POST {{Host}}/api/v1/internal/purchases
+Content-Type: application/json
+
+{
+  "buyerId": "{{BuyerId}}",
+  "orderId": "99000000-0000-0000-0000-000000000099",
+  "productId": "{{Product1Id}}"
+}
+
+### A4. Buyer gửi Đánh giá 5 sao hợp lệ (Kỳ vọng: 201 Created -> LƯU MÃ id ĐỂ DÙNG A7, A8)
+# @name createReview
+POST {{Host}}/api/v1/products/{{Product1Id}}/reviews
+Content-Type: application/json
+x-user-id: {{BuyerId}}
+x-user-roles: buyer
+
+{
+  "orderId": "99000000-0000-0000-0000-000000000099",
+  "rating": 5,
+  "comment": "Máy dùng rất mượt, màn hình OLED 120Hz siêu đẹp, pin trâu!"
+}
+
+### A5. Thử gửi lại đánh giá trên cùng đơn hàng (Kỳ vọng: 409 Conflict - ALREADY_REVIEWED)
+POST {{Host}}/api/v1/products/{{Product1Id}}/reviews
+Content-Type: application/json
+x-user-id: {{BuyerId}}
+x-user-roles: buyer
+
+{
+  "orderId": "99000000-0000-0000-0000-000000000099",
+  "rating": 5,
+  "comment": "Spam review lần 2"
+}
+
+### A6. Xem Rating sau khi có đánh giá (Kỳ vọng: avgRating: 5.0, reviewCount: 1, star5: 1)
+GET {{Host}}/api/v1/products/{{Product1Id}}/rating-summary
+Accept: application/json
+
+### A7. Buyer chỉnh sửa đánh giá (giảm từ 5 sao xuống 4 sao)
+@ReviewId = {{createReview.response.body.id}}
+PUT {{Host}}/api/v1/reviews/{{ReviewId}}
+Content-Type: application/json
+x-user-id: {{BuyerId}}
+x-user-roles: buyer
+
+{
+  "rating": 4,
+  "comment": "Dùng 1 tuần thấy máy hơi ấm khi chơi game nặng, giảm còn 4 sao."
+}
+
+### A8. Admin ẩn đánh giá do vi phạm (Kỳ vọng: status: Hidden, rating trừ về null/0)
+PATCH {{Host}}/api/v1/admin/reviews/{{ReviewId}}/moderate
+Content-Type: application/json
+x-user-id: {{AdminId}}
+x-user-roles: admin,staff
+
+{
+  "action": "HIDE"
+}
+
+### A9. Admin khôi phục lại đánh giá (Kỳ vọng: status: Published, rating hồi lại 4.0)
+PATCH {{Host}}/api/v1/admin/reviews/{{ReviewId}}/moderate
+Content-Type: application/json
+x-user-id: {{AdminId}}
+x-user-roles: admin,staff
+
+{
+  "action": "PUBLISH"
+}
+
+### A10. Buyer xóa đánh giá của mình (Kỳ vọng: 204 No Content)
+DELETE {{Host}}/api/v1/reviews/{{ReviewId}}
+x-user-id: {{BuyerId}}
+x-user-roles: buyer
+
+
+# ========================================================
+# 🛡️ PHẦN B: TEST TỐ CÁO & CẤM SẢN PHẨM (REPORTS & BAN)
+# ========================================================
+
+### B1. Buyer gửi đơn tố cáo sản phẩm vi phạm (Kỳ vọng: 201 Created -> LƯU MÃ id ĐỂ DÙNG B4, B5)
+# @name createReport
+POST {{Host}}/api/v1/products/{{Product2Id}}/reports
+Content-Type: application/json
+x-user-id: {{BuyerId}}
+x-user-roles: buyer
+
+{
+  "reason": "Counterfeit",
+  "description": "Sản phẩm áo khoác nhái logo thương hiệu khác, chất lượng vải kém không giống mô tả.",
+  "evidenceImages": [
+    "https://res.cloudinary.com/demo/image/upload/sample_fake_tag.jpg"
+  ]
+}
+
+### B2. Thử gửi lại đơn khi đơn cũ đang Pending (Kỳ vọng: 409 Conflict - ALREADY_REPORTED)
+POST {{Host}}/api/v1/products/{{Product2Id}}/reports
+Content-Type: application/json
+x-user-id: {{BuyerId}}
+x-user-roles: buyer
+
+{
+  "reason": "Counterfeit",
+  "description": "Gửi tiếp đơn tố cáo lần 2 khi đơn 1 chưa xử lý"
+}
+
+### B3. Admin xem hàng đợi đơn tố cáo (Kỳ vọng: 200 OK chứa đơn Pending vừa tạo)
+GET {{Host}}/api/v1/admin/reports/products?status=Pending&page=1&pageSize=10
+Accept: application/json
+x-user-id: {{AdminId}}
+x-user-roles: admin,staff
+
+### B4. Admin chuyển đơn sang trạng thái Điều tra (Kỳ vọng: 200 OK, status: Investigating)
+@ReportId = {{createReport.response.body.id}}
+PUT {{Host}}/api/v1/admin/reports/products/{{ReportId}}/action
+Content-Type: application/json
+x-user-id: {{AdminId}}
+x-user-roles: admin,staff
+
+{
+  "action": "INVESTIGATE",
+  "resolutionNote": "Đã tiếp nhận bằng chứng hình ảnh, chuyển bộ phận pháp chế đối soát với nhà bán hàng."
+}
+
+### B5. Admin ra phán quyết CẤM SẢN PHẨM (Kỳ vọng: 200 OK, status: Resolved)
+PUT {{Host}}/api/v1/admin/reports/products/{{ReportId}}/action
+Content-Type: application/json
+x-user-id: {{AdminId}}
+x-user-roles: admin,staff
+
+{
+  "action": "BAN_PRODUCT",
+  "resolutionNote": "Xác nhận hàng giả vi phạm bản quyền thương hiệu nghiêm trọng. Cấm vĩnh viễn khỏi sàn."
+}
+
+### B6. Kiểm chứng: Xem sản phẩm Product 2 (Kỳ vọng: status: Banned)
+GET {{Host}}/api/v1/products/{{Product2Id}}
+Accept: application/json
+
+### B7. Kiểm chứng: Seller thử sửa sản phẩm bị Ban (Kỳ vọng: 400 Bad Request - PRODUCT_BANNED)
+PUT {{Host}}/api/v1/products/{{Product2Id}}
+Content-Type: application/json
+x-user-id: {{SellerId}}
+x-user-roles: seller
+
+{
+  "name": "Áo Khoác Bomber Thử Sửa",
+  "categoryId": "20000000-0000-0000-0000-000000000002"
+}
+
+### B8. Kiểm chứng: Admin thử dùng APPROVE để mở khóa sản phẩm bị Ban (Kỳ vọng: 400 Bad Request - PRODUCT_ALREADY_BANNED)
+PATCH {{Host}}/api/v1/admin/products/{{Product2Id}}/moderate
+Content-Type: application/json
+x-user-id: {{AdminId}}
+x-user-roles: admin,staff
+
+{
+  "action": "APPROVE"
+}

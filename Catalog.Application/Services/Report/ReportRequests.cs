@@ -3,6 +3,8 @@ namespace Catalog.Application.Services.Report;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.IO;
+using Catalog.Application.Common.Models;
 
 public sealed record CreateProductReportRequest(
     [Required(ErrorMessage = "Report reason is required.")]
@@ -10,10 +12,7 @@ public sealed record CreateProductReportRequest(
 
     [Required(ErrorMessage = "Description is required.")]
     [StringLength(2000, MinimumLength = 10, ErrorMessage = "Description must be between 10 and 2000 characters.")]
-    string Description,
-
-    [MaxLength(5, ErrorMessage = "Maximum 5 evidence images are allowed.")]
-    List<string>? EvidenceImages = null
+    string Description
 );
 
 public sealed record ModerateProductReportRequest(

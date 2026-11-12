@@ -1,19 +1,41 @@
 namespace Catalog.Api.Controllers.Public;
 
 using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Catalog.Api.Extensions;
 using Catalog.Api.Filters;
 using Catalog.Application.Common.Models;
 using Catalog.Application.Services.Review;
+using Catalog.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+
+public sealed class CreateProductReviewFormRequest
+{
+    [Required(ErrorMessage = "Order ID is required.")]
+    public Guid OrderId { get; set; }
+
+    [Range(1, 5, ErrorMessage = "Rating must be between 1 and 5 stars.")]
+    public short Rating { get; set; }
+
+    [StringLength(2000, ErrorMessage = "Comment cannot exceed 2000 characters.")]
+    public string? Comment { get; set; }
+
+    public List<IFormFile>? ReviewImages { get; set; }
+}
 
 [ApiController]
 [Produces("application/json")]
 public class ProductReviewsController : ControllerBase
 {
+    private static readonly string[] AllowedImageExtensions = { ".jpg", ".jpeg", ".png", ".webp" };
+    private const long MaxImageFileSizeBytes = 5 * 1024 * 1024; // 5 MB
+
     private readonly IProductReviewService _reviewService;
 
     public ProductReviewsController(IProductReviewService reviewService)
@@ -61,9 +83,10 @@ public class ProductReviewsController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>Creates a product review after completing a purchase (CAT-62).</summary>
+    /// <summary>Creates a product review with optional images after completing a purchase (CAT-62).</summary>
     [HttpPost("api/v1/products/{id:guid}/reviews")]
     [RequireRole("buyer", "admin")]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ProductReviewDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -72,7 +95,7 @@ public class ProductReviewsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CreateReview(
         [FromRoute] Guid id,
-        [FromBody] CreateProductReviewRequest request,
+        [FromForm] CreateProductReviewFormRequest request,
         CancellationToken ct = default)
     {
         if (!this.TryGetUserId(out var currentUserId, out var errorResult))
@@ -82,7 +105,7 @@ public class ProductReviewsController : ControllerBase
 
         if (request == null)
         {
-            return this.BadRequestError("VAL_INVALID_INPUT", "Request body is required.");
+            return this.BadRequestError("VAL_INVALID_INPUT", "Request form data is required.");
         }
 
         if (request.OrderId == Guid.Empty)
@@ -90,8 +113,49 @@ public class ProductReviewsController : ControllerBase
             return this.BadRequestError("VAL_INVALID_INPUT", "Order ID is required.");
         }
 
-        var result = await _reviewService.CreateReviewAsync(id, request, currentUserId, ct);
-        return StatusCode(StatusCodes.Status201Created, result);
+        var streams = new List<FileUploadModel>();
+        try
+        {
+            if (request.ReviewImages != null && request.ReviewImages.Count > 0)
+            {
+                if (request.ReviewImages.Count > 5)
+                {
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Maximum 5 review images are allowed.");
+                }
+
+                foreach (var file in request.ReviewImages)
+                {
+                    if (file == null || file.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    if (file.Length > MaxImageFileSizeBytes)
+                    {
+                        throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"File '{file.FileName}' exceeds 5 MB limit.");
+                    }
+
+                    var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+                    if (!AllowedImageExtensions.Contains(ext))
+                    {
+                        throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"File '{file.FileName}' has unsupported extension '{ext}'. Only .jpg, .jpeg, .png, .webp are allowed.");
+                    }
+
+                    streams.Add(new FileUploadModel(file.OpenReadStream(), file.FileName));
+                }
+            }
+
+            var serviceRequest = new CreateProductReviewRequest(request.OrderId, request.Rating, request.Comment);
+            var result = await _reviewService.CreateReviewAsync(id, serviceRequest, currentUserId, streams.Count > 0 ? streams : null, ct);
+            return StatusCode(StatusCodes.Status201Created, result);
+        }
+        finally
+        {
+            foreach (var item in streams)
+            {
+                item.Stream?.Dispose();
+            }
+        }
     }
 }
 

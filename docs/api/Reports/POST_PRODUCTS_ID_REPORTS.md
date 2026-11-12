@@ -1,8 +1,8 @@
 # CATALOG SERVICE - POST /api/v1/products/{id}/reports
 
-> **Feature / Use Case:** Khách hàng (Buyer) hoặc Đối tác gửi đơn tố cáo sản phẩm vi phạm chính sách [CAT-57]  
-> **Trạng thái:** ⏳ DRAFT (Pre-Code Specification)  
-> **Ngày tạo:** 2026-11-10  
+> **Feature / Use Case:** Khách hàng (Buyer) hoặc Đối tác gửi đơn tố cáo sản phẩm vi phạm chính sách kèm upload trực tiếp ảnh bằng chứng thật [CAT-57]  
+> **Trạng thái:** ✅ VERIFIED  
+> **Ngày cập nhật:** 2026-11-12  
 > **Tác giả:** Nexus Team & AI Agent  
 
 ---
@@ -10,12 +10,14 @@
 ## 1. Thông tin Định tuyến & RBAC (Routing & Authorization)
 - **HTTP Method:** `POST`
 - **Route Endpoint:** `/api/v1/products/{id}/reports`
+- **Content-Type:** `multipart/form-data` (Hỗ trợ upload trực tiếp file ảnh thật từ máy khách)
 - **Quyền hạn (RBAC Policy):** `[RequireRole("buyer", "seller")]` (Bắt buộc người dùng đã đăng nhập)
 - **Header bắt buộc:**
   - `X-User-Id: <Guid>` (UUID của người dùng gửi đơn tố cáo)
   - `X-User-Roles: buyer` hoặc `seller`
-- **Controller:** `Catalog.Api/Controllers/Public/ProductReportsController.cs` (hoặc `ProductsController.cs`)
+- **Controller:** `Catalog.Api/Controllers/Public/ProductReportsController.cs`
 - **Application Contract:** `Catalog.Application/Services/Report/IProductReportService.cs` (`SubmitProductReportAsync`)
+- **Tương tác Lưu trữ Ảnh (Cloudinary Storage):** Backend tự động kiểm tra định dạng và dung lượng ảnh, sau đó tải các file ảnh trong `evidenceFiles` lên Cloudinary vào thư mục `reports/evidence` và lưu các URL kết quả vào database.
 
 ---
 
@@ -26,33 +28,22 @@
 | :--- | :--- | :--- | :---: | :--- | :--- |
 | `id` | Route | `Guid` | Có | UUIDv4 format | Khóa chính của sản phẩm bị tố cáo |
 
-### 2.2 Request Body Record DTO (`CreateProductReportRequest`)
-- **Vị trí file:** `Catalog.Application/Services/Report/ReportRequests.cs`
-- **Khai báo C# Record:**
-```csharp
-public sealed record CreateProductReportRequest(
-    [Required(ErrorMessage = "Report reason is required.")]
-    string Reason,
+### 2.2 Form Data Parameters (`multipart/form-data`)
+| Trường Form | Kiểu | Bắt buộc | Ràng buộc / Giới hạn | Ghi chú |
+| :--- | :--- | :---: | :--- | :--- |
+| `reason` | `string` | Có | `Counterfeit`, `ProhibitedItem`, `IncorrectDescription`, `OffensiveContent`, `Other` | Lý do tố cáo theo danh mục chuẩn |
+| `description` | `string` | Có | Độ dài từ 10 đến 2000 ký tự | Mô tả chi tiết hành vi vi phạm |
+| `evidenceFiles` | `List<IFormFile>` | **Có (Bắt buộc $\ge$ 1 ảnh)** | Từ 1 đến 5 file; $\le$ 5MB/file; định dạng `.jpg`, `.jpeg`, `.png`, `.webp` | Bắt buộc đính kèm tối thiểu 1 ảnh bằng chứng thật để tránh tố cáo ảo |
 
-    [Required(ErrorMessage = "Description is required.")]
-    [StringLength(2000, MinimumLength = 10, ErrorMessage = "Description must be between 10 and 2000 characters.")]
-    string Description,
-
-    [MaxLength(5, ErrorMessage = "Maximum 5 evidence images are allowed.")]
-    List<string>? EvidenceImages = null
-);
-```
-
-- **JSON Request Body mẫu:**
-```json
-{
-  "reason": "Counterfeit",
-  "description": "Sản phẩm nhận được có dấu hiệu làm giả logo, không có tem chống giả và nhãn mác trùng khớp với hãng.",
-  "evidenceImages": [
-    "https://storage.nexus.com/evidence/2026/report_img_1.jpg",
-    "https://storage.nexus.com/evidence/2026/report_img_2.jpg"
-  ]
-}
+- **Ví dụ gọi bằng cURL (gửi file ảnh thật):**
+```bash
+curl -X POST "http://localhost:8002/api/v1/products/f3f47581-6036-4fa1-b9fa-803770308c71/reports" \
+  -H "x-user-id: dddddddd-4444-4444-4444-444444444444" \
+  -H "x-user-roles: buyer" \
+  -F "reason=Counterfeit" \
+  -F "description=Sản phẩm nhận được có dấu hiệu làm giả logo và chất lượng rất kém." \
+  -F "evidenceFiles=@/path/to/evidence_tag.png" \
+  -F "evidenceFiles=@/path/to/evidence_fabric.png"
 ```
 
 ---
@@ -61,9 +52,9 @@ public sealed record CreateProductReportRequest(
 
 1. **Kiểm tra Sản phẩm:**
    - Sản phẩm có `Id == id` phải tồn tại trong CSDL và chưa bị xóa mềm (`!IsDeleted`). Nếu không tồn tại $\to$ Trả về `404 PRODUCT_NOT_FOUND`.
-   - Nếu sản phẩm đã ở trạng thái cấm (`Status == ProductStatus.Banned`) $\to$ Trả về `400 PRODUCT_ALREADY_BANNED` với thông điệp: `"This product has already been permanently banned."`.
+   - Nếu sản phẩm đã ở trạng thái cấm (`Status == ProductStatus.Banned`) $\to$ Trả về `400 PRODUCT_ALREADY_BANNED` ("This product has already been permanently banned.").
 2. **Quy tắc Chống Spam (Anti-Spam & Deduplication):**
-   - Một người dùng (`ReporterId`) **không được phép gửi nhiều báo cáo liên tiếp** cho cùng một sản phẩm khi đơn báo cáo trước đó vẫn đang trong quá trình xử lý:
+   - Một người dùng (`ReporterId`) **không được phép gửi nhiều báo cáo liên tiếp** cho cùng một sản phẩm khi đơn báo cáo trước đó vẫn đang trong quá trình xử lý (`Pending` hoặc `Investigating`):
      ```csharp
      var hasActiveReport = await _dbContext.ProductReports
          .AnyAsync(r => r.ProductId == id 
@@ -71,18 +62,26 @@ public sealed record CreateProductReportRequest(
                      && (r.Status == ReportStatus.Pending || r.Status == ReportStatus.Investigating)
                      && !r.IsDeleted, cancellationToken);
      ```
-   - Nếu vi phạm $\to$ Trả về `409 Conflict` với mã lỗi `ALREADY_REPORTED` và thông điệp: `"You have already submitted a report for this product that is currently under review."`.
-3. **Lưu trữ & Trạng thái Ban đầu:**
+   - Nếu vi phạm $\to$ Trả về `409 Conflict` với mã lỗi `ALREADY_REPORTED` ("You have already submitted a report for this product that is currently under review.").
+3. **Quy định Bắt buộc về Ảnh Bằng chứng (Mandatory Evidence Images):**
+   - Đơn tố cáo **bắt buộc phải có ít nhất 1 ảnh bằng chứng thật** (`evidenceFiles`). Nếu không có ảnh hoặc danh sách rỗng $\to$ Trả về `400 Bad Request` với mã lỗi `VAL_INVALID_INPUT` ("At least one evidence image is required to submit a report.").
+   - Backend duyệt qua từng file trong `evidenceFiles` (tối đa 5 file, mỗi file $\le$ 5MB, hỗ trợ `.jpg`, `.jpeg`, `.png`, `.webp`).
+   - Gọi `_imageStorageService.UploadAsync(stream, fileName, folder: "reports/evidence", ct)` tải lên Cloudinary.
+   - Thu thập danh sách các link URL an toàn và lưu vào CSDL cột `EvidenceImages` dưới dạng chuỗi `jsonb`.
+4. **Lưu trữ & Trạng thái Ban đầu:**
    - Tạo bản ghi mới trong bảng `ProductReports` với `Status = ReportStatus.Pending`.
-   - Thuộc tính `EvidenceImages` được serialize dưới dạng `jsonb` lưu vào PostgreSQL.
    - Ghi nhận `AuditLog` với `Action = AuditAction.ProductReport`.
+5. **Tự động gửi thông báo In-App cho Người gửi tố cáo (Buyer):**
+   - Khi đơn nộp thành công, hệ thống tự động gọi NotificationService (`POST api/v1/internal/notifications/in-app`) để gửi thông báo xác nhận cho Buyer:
+     - **NotificationType:** `REPORT_SUBMITTED`
+     - **Tiêu đề:** `"Đã tiếp nhận đơn tố cáo sản phẩm"`
+     - **Nội dung:** `"Chúng tôi đã tiếp nhận đơn tố cáo của bạn đối với sản phẩm '{product.Name}'. Đội ngũ Quản trị viên sẽ tiến hành xác minh trong 24-48 giờ."`
 
 ---
 
 ## 4. Đầu ra & Hợp đồng DTO thuần (Response Contract - Pure DTO)
 
 - **Mã HTTP thành công:** `201 Created`
-- **Location Header:** `/api/v1/products/{id}/reports/{reportId}`
 - **Khai báo C# Record:**
 ```csharp
 public sealed record ProductReportDto(
@@ -100,20 +99,20 @@ public sealed record ProductReportDto(
 );
 ```
 
-- **JSON Response mẫu:**
+- **JSON Response Mẫu:**
 ```json
 {
-  "id": "e1111111-2222-3333-4444-555555555555",
-  "productId": "77777777-7777-7777-7777-777777777777",
-  "reporterId": "99999999-9999-9999-9999-999999999999",
+  "id": "d40de46c-7194-415a-a670-c7a220c85d6a",
+  "productId": "f3f47581-6036-4fa1-b9fa-803770308c71",
+  "reporterId": "dddddddd-4444-4444-4444-444444444444",
   "reason": "Counterfeit",
-  "description": "Sản phẩm nhận được có dấu hiệu làm giả logo, không có tem chống giả và nhãn mác trùng khớp với hãng.",
+  "description": "Sản phẩm nhận được có dấu hiệu làm giả logo và chất lượng rất kém.",
   "evidenceImages": [
-    "https://storage.nexus.com/evidence/2026/report_img_1.jpg",
-    "https://storage.nexus.com/evidence/2026/report_img_2.jpg"
+    "https://res.cloudinary.com/u6yxkkop/image/upload/v1794457058/nexus_catalog/reports/evidence/oydlbxzwputlseoy8jz5.png",
+    "https://res.cloudinary.com/u6yxkkop/image/upload/v1794457059/nexus_catalog/reports/evidence/yaw7uduqufixc9ipuig8.png"
   ],
   "status": "Pending",
-  "createdAt": "2026-11-10T09:30:00Z",
+  "createdAt": "2026-11-12T04:17:39Z",
   "reviewedBy": null,
   "reviewedAt": null,
   "resolutionNote": null
@@ -122,28 +121,15 @@ public sealed record ProductReportDto(
 
 ---
 
-## 5. Ma trận Mã lỗi RFC 9110 (Error Matrix)
+## 5. Ma trận Lỗi (RFC 9110 Error Matrix)
 
-| HTTP Status | Error Code | Detail Message (Sentence case) | Điều kiện phát sinh |
+| HTTP Status | Error Code | Điều kiện kích hoạt | Error Message chuẩn |
 | :---: | :--- | :--- | :--- |
-| `400 Bad Request` | `VAL_INVALID_INPUT` | `Report reason is required.` | Trường `reason` rỗng |
-| `400 Bad Request` | `VAL_INVALID_INPUT` | `Invalid report reason '{0}'. Allowed values: Counterfeit, ProhibitedItem, IncorrectDescription, OffensiveContent, Other.` | Lý do tố cáo không nằm trong enum |
-| `400 Bad Request` | `VAL_INVALID_INPUT` | `Description must be between 10 and 2000 characters.` | Độ dài mô tả vi phạm vi phạm giới hạn |
-| `400 Bad Request` | `VAL_INVALID_INPUT` | `Maximum 5 evidence images are allowed.` | Mảng ảnh bằng chứng vượt quá 5 URL |
-| `400 Bad Request` | `PRODUCT_ALREADY_BANNED` | `This product has already been permanently banned.` | Báo cáo sản phẩm đã bị cấm trước đó |
-| `401 Unauthorized` | `UNAUTHORIZED` | `Authentication is required to access this resource.` | Không gửi kèm token hoặc thiếu `X-User-Id` |
-| `403 Forbidden` | `FORBIDDEN` | `You do not have permission to access or modify this resource.` | Token không có role `buyer` hoặc `seller` |
-| `404 Not Found` | `PRODUCT_NOT_FOUND` | `Product not found in the system.` | Sản phẩm không tồn tại hoặc đã bị xóa |
-| `409 Conflict` | `ALREADY_REPORTED` | `You have already submitted a report for this product that is currently under review.` | Người dùng đã có đơn báo cáo chưa được xử lý |
-
----
-
-## 6. Bảng Ánh xạ Enum `ReportReason`
-
-| C# Enum Member | Giá trị số (DB) | Giá trị JSON API (PascalCase) | Ý nghĩa nghiệp vụ |
-| :--- | :---: | :--- | :--- |
-| `ReportReason.Counterfeit` | `0` | `"Counterfeit"` | Hàng giả, hàng nhái, vi phạm quyền SHTT |
-| `ReportReason.ProhibitedItem` | `1` | `"ProhibitedItem"` | Hàng cấm buôn bán theo quy định pháp luật |
-| `ReportReason.IncorrectDescription` | `2` | `"IncorrectDescription"` | Mô tả sai lệch, lừa dối người tiêu dùng |
-| `ReportReason.OffensiveContent` | `3` | `"OffensiveContent"` | Nội dung/hình ảnh phản cảm, bạo lực, khiêu dâm |
-| `ReportReason.Other` | `4` | `"Other"` | Lý do vi phạm khác kèm giải thích |
+| `400 Bad Request` | `VAL_INVALID_INPUT` | Không đính kèm ảnh bằng chứng hoặc danh sách file rỗng | `"At least one evidence image is required to submit a report."` |
+| `400 Bad Request` | `VAL_INVALID_INPUT` | `reason` rỗng hoặc không thuộc enum; `description` < 10 hoặc > 2000 ký tự | `"Report reason is required."` / `"Description must be between 10 and 2000 characters."` |
+| `400 Bad Request` | `VAL_INVALID_INPUT` | Quá 5 file ảnh hoặc định dạng không phải `.jpg, .jpeg, .png, .webp` | `"Maximum 5 evidence images are allowed."` / `"File '{fileName}' has unsupported extension '{ext}'. Only .jpg, .jpeg, .png, .webp are allowed."` |
+| `400 Bad Request` | `VAL_INVALID_INPUT` | File ảnh vượt quá dung lượng 5MB | `"File '{fileName}' exceeds 5 MB limit."` |
+| `400 Bad Request` | `PRODUCT_ALREADY_BANNED` | Sản phẩm đã bị cấm vĩnh viễn trên hệ thống | `"This product has already been permanently banned."` |
+| `401 Unauthorized` | `UNAUTHORIZED` | Không có Header định danh hoặc token | `"Authentication is required to perform this action."` |
+| `404 Not Found` | `PRODUCT_NOT_FOUND` | Không tìm thấy sản phẩm cần tố cáo | `"Product not found in the system."` |
+| `409 Conflict` | `ALREADY_REPORTED` | Người dùng đã có đơn tố cáo đang chờ xử lý cho sản phẩm này | `"You have already submitted a report for this product that is currently under review."` |

@@ -17,16 +17,27 @@ using Catalog.Domain.Exceptions;
 public sealed class ProductReportService : IProductReportService
 {
     private readonly ICatalogDbContext _dbContext;
+    private readonly IImageStorageService _imageStorageService;
+    private readonly IUserClient _userClient;
+    private readonly INotificationClient _notificationClient;
 
-    public ProductReportService(ICatalogDbContext dbContext)
+    public ProductReportService(
+        ICatalogDbContext dbContext,
+        IImageStorageService imageStorageService,
+        IUserClient userClient,
+        INotificationClient notificationClient)
     {
         _dbContext = dbContext;
+        _imageStorageService = imageStorageService;
+        _userClient = userClient;
+        _notificationClient = notificationClient;
     }
 
     public async Task<ProductReportDto> SubmitProductReportAsync(
         Guid productId,
         CreateProductReportRequest request,
         Guid reporterId,
+        IReadOnlyList<FileUploadModel>? evidenceFiles = null,
         CancellationToken cancellationToken = default)
     {
         if (request == null)
@@ -67,15 +78,32 @@ public sealed class ProductReportService : IProductReportService
             throw new BusinessRuleValidationException("ALREADY_REPORTED", "You have already submitted a report for this product that is currently under review.", 409);
         }
 
-        string? evidenceJson = null;
-        if (request.EvidenceImages != null && request.EvidenceImages.Count > 0)
+        if (evidenceFiles == null || evidenceFiles.Count == 0)
         {
-            if (request.EvidenceImages.Count > 5)
-            {
-                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Maximum 5 evidence images are allowed.");
-            }
-            evidenceJson = JsonSerializer.Serialize(request.EvidenceImages);
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "At least one evidence image is required to submit a report.");
         }
+
+        if (evidenceFiles.Count > 5)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Maximum 5 evidence images are allowed.");
+        }
+
+        var evidenceUrls = new List<string>();
+        foreach (var file in evidenceFiles)
+        {
+            var uploadResult = await _imageStorageService.UploadAsync(
+                file.Stream,
+                file.FileName,
+                folder: "reports/evidence",
+                cancellationToken: cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(uploadResult?.Url))
+            {
+                evidenceUrls.Add(uploadResult.Url);
+            }
+        }
+
+        string? evidenceJson = evidenceUrls.Count > 0 ? JsonSerializer.Serialize(evidenceUrls) : null;
 
         var now = DateTimeOffset.UtcNow;
         var report = new ProductReport
@@ -102,6 +130,15 @@ public sealed class ProductReportService : IProductReportService
             userId: reporterId.ToString());
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Send In-App notification to Buyer confirming report receipt
+        await _notificationClient.SendInAppNotificationAsync(
+            reporterId,
+            "Đã tiếp nhận đơn tố cáo sản phẩm",
+            $"Chúng tôi đã tiếp nhận đơn tố cáo của bạn đối với sản phẩm '{product.Name}'. Đội ngũ Quản trị viên sẽ tiến hành xác minh trong 24-48 giờ.",
+            "REPORT_SUBMITTED",
+            $"{{\"reportId\":\"{report.Id}\",\"productId\":\"{product.Id}\"}}",
+            cancellationToken);
 
         return MapToDto(report);
     }
@@ -314,6 +351,62 @@ public sealed class ProductReportService : IProductReportService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Deduct 10 reputation points from Seller when Product is banned due to violations (P2-06)
+        if (action == "BAN_PRODUCT" && report.Product != null && report.Product.SellerId != Guid.Empty)
+        {
+            await _userClient.PenalizeSellerAsync(
+                report.Product.SellerId,
+                penaltyPoints: 10,
+                reason: "PRODUCT_BANNED_SELLER",
+                referenceId: report.ProductId,
+                cancellationToken: cancellationToken);
+        }
+
+        // Send In-App notifications based on moderation decision
+        var productName = report.Product?.Name ?? "sản phẩm";
+        var note = request.ResolutionNote?.Trim() ?? string.Empty;
+
+        if (action == "BAN_PRODUCT")
+        {
+            // 1. Notify Seller of ban and reputation penalty
+            if (report.Product != null && report.Product.SellerId != Guid.Empty)
+            {
+                await _notificationClient.SendInAppNotificationAsync(
+                    report.Product.SellerId,
+                    "CẢNH BÁO: Sản phẩm bị cấm do đơn tố cáo vi phạm",
+                    $"Sản phẩm '{productName}' đã bị gỡ vĩnh viễn sau khi Quản trị viên xác minh đơn tố cáo vi phạm. Tài khoản Shop bị trừ 10 điểm uy tín. Phán quyết: {note}.",
+                    "PRODUCT_BANNED_REPORT",
+                    $"{{\"productId\":\"{report.ProductId}\",\"reportId\":\"{report.Id}\",\"penaltyPoints\":10}}",
+                    cancellationToken);
+            }
+
+            // 2. Notify Reporter (Buyer) that their report was resolved
+            if (report.ReporterId != Guid.Empty)
+            {
+                await _notificationClient.SendInAppNotificationAsync(
+                    report.ReporterId,
+                    "Đơn tố cáo sản phẩm đã được xử lý thành công",
+                    $"Cảm ơn bạn đã hỗ trợ bảo vệ cộng đồng. Đơn tố cáo sản phẩm '{productName}' của bạn đã được Quản trị viên xác minh chính xác và xử lý nghiêm khắc.",
+                    "REPORT_RESOLVED",
+                    $"{{\"reportId\":\"{report.Id}\",\"productId\":\"{report.ProductId}\",\"resolution\":\"Resolved\"}}",
+                    cancellationToken);
+            }
+        }
+        else if (action == "DISMISS")
+        {
+            // Notify Reporter (Buyer) that report was dismissed
+            if (report.ReporterId != Guid.Empty)
+            {
+                await _notificationClient.SendInAppNotificationAsync(
+                    report.ReporterId,
+                    "Thông báo kết quả xử lý đơn tố cáo",
+                    $"Đơn tố cáo sản phẩm '{productName}' của bạn đã được xem xét và bác bỏ do Người bán đã cung cấp đầy đủ giấy tờ hợp lệ hoặc bằng chứng chưa đủ căn cứ. Ghi chú: {note}.",
+                    "REPORT_DISMISSED",
+                    $"{{\"reportId\":\"{report.Id}\",\"productId\":\"{report.ProductId}\",\"resolution\":\"Dismissed\"}}",
+                    cancellationToken);
+            }
+        }
 
         return MapToDto(report);
     }

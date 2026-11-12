@@ -10,6 +10,7 @@ public class ProductReview : BaseEntity<Guid>
     public required Guid BuyerId { get; set; }
     public required short Rating { get; set; }
     public string? Comment { get; set; }
+    public string? ReviewImages { get; set; }
     public required ReviewStatus Status { get; set; } = ReviewStatus.Published;
 
     // Navigation

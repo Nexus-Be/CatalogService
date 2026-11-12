@@ -6,7 +6,8 @@
 > **Cơ sở dữ liệu:** PostgreSQL Neon Cloud (`category_db` / `catalog`)  
 > **Quy chuẩn định tuyến:** 100% danh từ số nhiều `/api/v1/<plural>`, trả về DTO thuần túy, Zero ResultFilter (Gateway tự động bọc envelope outer).  
 > **Quy chuẩn lỗi:** RFC 9110 ProblemDetails (`application/problem+json`), mã lỗi `SCREAMING_SNAKE_CASE`, thông điệp tiếng Anh 100% `Sentence case`.  
-> **Quy chuẩn Enum:** Lưu Database dạng `integer` (int32), tuần tự hóa REST JSON dạng `PascalCase` string.
+> **Quy chuẩn Enum:** Lưu Database dạng `integer` (int32), tuần tự hóa REST JSON dạng `PascalCase` string.  
+> **Hướng dẫn tích hợp cho Frontend:** Xem tài liệu chuẩn chỉ dành riêng cho FE tại [`FE_INTEGRATION_GUIDE.md`](FE_INTEGRATION_GUIDE.md).
 
 ---
 
@@ -383,7 +384,7 @@
 | **Cross-service Call** | `None` |
 
 #### 2. Response Contract
-* **HTTP Status Code:** `200 OK` trả về `SellerProductDetailDto` (đầy đủ tất cả SKU active/inactive, lịch sử đơn hàng, và ảnh).
+* **HTTP Status Code:** `200 OK` trả về `SellerProductDetailDto` (đầy đủ tất cả SKU active/inactive, lịch sử đơn hàng, ảnh, trọng lượng vận chuyển `weightGrams`, và lý do từ chối duyệt `rejectionReason` trích xuất từ AuditLog khi bị `Rejected`).
 
 ---
 
@@ -400,7 +401,7 @@
 | **RBAC & Identity** | `[RequireRole("seller", "admin")]`. `SellerId` lấy từ `HttpContext` (`x-user-id`), cấm client tự truyền trong body |
 | **Enums Involved** | `ProductStatus` (Draft = 0), `SaleType` (Regular = 0), `VariantStatus` (Active = 1) |
 | **Audit Logging** | `_dbContext.AddAuditLog(AuditAction.ProductCreate, ...)` |
-| **Cross-service Call** | **CÓ** $\to$ `FulfillmentService` (`POST /api/v1/inventories/initialize`) |
+| **Cross-service Call** | `None` (Tồn kho vật lý chỉ được khởi tạo sau khi Admin duyệt sản phẩm `APPROVE` lên sàn) |
 
 #### 2. Validation Rules & Guardrails
 * `name`: Bắt buộc, $1 \le \text{length} \le 255$ (`VAL_INVALID_INPUT`).
@@ -475,7 +476,7 @@
 | **RBAC & Identity** | `[RequireRole("seller", "admin")]` |
 | **Enums Involved** | `SaleType` (Auction = 1), `ProductStatus` (Draft = 0) |
 | **Audit Logging** | `_dbContext.AddAuditLog(AuditAction.ProductCreate, ...)` |
-| **Cross-service Call** | **CÓ** $\to$ `FulfillmentService` (`POST /api/v1/inventories/initialize`) |
+| **Cross-service Call** | `None` (Tồn kho vật lý chỉ được khởi tạo sau khi Admin duyệt sản phẩm `APPROVE` lên sàn) |
 
 #### 2. Validation Rules & Request / Response
 * Không nhận mảng `variants` từ bên ngoài. Tự động sinh 1 SKU duy nhất với `price = null`.
@@ -527,20 +528,22 @@
 | **Controller** | `Catalog.Api.Controllers.Public.ProductsController.ChangeStatus` |
 | **Application Service** | `Catalog.Application.Services.Product.IProductService.ChangeStatusAsync` |
 | **Primary Entity** | `Catalog.Domain.Entities.Product` |
-| **RBAC & Identity** | `[RequireRole("seller", "admin")]`. Kiểm tra sở hữu seller |
-| **Enums Involved** | `ProductStatus` (Draft = 0, Active = 1, Inactive = 2, Auctioned = 3, InAuction = 4), `ProductInactiveReason` (SellerPaused = 0, Discontinued = 1, AdminLocked = 2, Other = 3) |
+| **RBAC & Identity** | `[RequireRole("seller", "admin")]`. Kiểm tra sở hữu seller. Seller không thể tự chuyển sang `Active` (chặn với HTTP 403 `APPROVAL_REQUIRED`). |
+| **Enums Involved** | `ProductStatus` (Draft = 0, Active = 1, Inactive = 2, Auctioned = 3, InAuction = 4, Banned = 5, PendingApproval = 6), `ProductInactiveReason` (None = 0, SellerPaused = 1, AdminLocked = 2, OutOfStock = 3, Rejected = 4) |
 | **Audit Logging** | `_dbContext.AddAuditLog(AuditAction.ProductUpdate, ...)` |
-| **Cross-service Call** | `None` |
+| **Cross-service Call** | `None` (Tồn kho vật lý do Admin duyệt `APPROVE` tại API 36 kích hoạt) |
 
 #### 2. Validation Rules & Guardrails Bắt buộc
-* Để chuyển sang `ACTIVE`, hệ thống bắt buộc kiểm tra 2 điều kiện:
+* **Rào chắn Phê duyệt Lên sàn:** Seller **bắt buộc** phải nộp duyệt qua trạng thái `PENDING_APPROVAL`. Cấm seller tự ý đổi trực tiếp sang `ACTIVE` $\implies$ Trả về `403 Forbidden` (`APPROVAL_REQUIRED`).
+* Để nộp duyệt (`PENDING_APPROVAL`) hoặc chuyển sang `ACTIVE` (Admin), hệ thống bắt buộc kiểm tra 3 điều kiện:
   1. Phải có ít nhất **1 biến thể đang `ACTIVE`** và có giá bán $> 0$ (sản phẩm thường).
   2. Phải có ít nhất **1 hình ảnh sản phẩm đã upload** và mang cờ đại diện `IsActive = true`.
+  3. Phải có **trọng lượng vận chuyển hợp lệ** (`WeightGrams > 0`).
   $\implies$ Vi phạm điều kiện: trả về lỗi `400 Bad Request` (`VAL_INVALID_INPUT`).
 
 #### 3. Request & Response
-* **Request Body (`ChangeProductStatusRequest`):** `status` (`String`, Bắt buộc: `DRAFT`, `ACTIVE`, `INACTIVE`), `statusReason` (`String?`, Tùy chọn).
-* **HTTP Status Code:** `200 OK` trả về `ProductDto` kèm thời gian `publishedAt = UtcNow`.
+* **Request Body (`ChangeProductStatusRequest`):** `status` (`String`, Bắt buộc: `DRAFT`, `PENDING_APPROVAL`, `ACTIVE` [Admin only], `INACTIVE`), `statusReason` (`String?`, Tùy chọn, tự động reset về `null` khi nộp duyệt).
+* **HTTP Status Code:** `200 OK` trả về `ProductDto`.
 
 ---
 
@@ -930,10 +933,12 @@
 - **Quyền hạn:** `[RequireRole("admin", "staff")]`, bắt buộc `X-User-Id`.
 - **Endpoint Route:** `/api/v1/admin/products/{id}/moderate` (Canonical route duy nhất cho Admin/Staff).
 - **Mô tả:**
-  - `APPROVE` / `UNLOCK`: Cho phép sản phẩm lên sàn bán (`Status = Active`, xóa `StatusReason`). Yêu cầu tối thiểu 1 variant và 1 ảnh hợp lệ.
-  - `SUSPEND` / `REJECT`: Cưỡng chế dừng bán (`Status = Inactive`, `StatusReason = AdminLocked`, tự động tắt toàn bộ variants). Chặn Seller tự ý mở khóa.
-  - `BAN` (Bổ sung mới): Cấm vĩnh viễn sản phẩm khỏi sàn (`Status = Banned`, xóa `StatusReason`), vô hiệu hóa triệt để toàn bộ variants, tự động đóng toàn bộ đơn tố cáo đang chờ trong `ProductReports`, cấm Seller chỉnh sửa hoặc kích hoạt lại.
+  - `APPROVE` / `UNLOCK`: Cho phép sản phẩm lên sàn bán (`Status = Active`, xóa `StatusReason`). Yêu cầu tối thiểu 1 variant và 1 ảnh hợp lệ. **Tự động gọi FulfillmentService khởi tạo tồn kho vật lý (`InitializeInventoryForSkuAsync`) cho toàn bộ biến thể hoạt động.**
+  - `REJECT`: Từ chối duyệt đưa sản phẩm lên sàn, chuyển về `Status = Draft` và `StatusReason = Rejected` (4). Ghi nhận phản hồi kiểm duyệt viên trong `AuditLog` để hiển thị `rejectionReason` cho Seller khắc phục và gửi duyệt lại.
+  - `SUSPEND`: Cưỡng chế dừng bán vi phạm (`Status = Inactive`, `StatusReason = AdminLocked`, tự động tắt toàn bộ variants). Chặn Seller tự ý mở khóa.
+  - `BAN`: Cấm vĩnh viễn sản phẩm khỏi sàn (`Status = Banned`, xóa `StatusReason`), vô hiệu hóa triệt để toàn bộ variants, tự động đóng toàn bộ đơn tố cáo đang chờ trong `ProductReports`, cấm Seller chỉnh sửa hoặc kích hoạt lại.
   - Tự động ghi lại vết lịch sử vào bảng `audit_logs`.
+  - **Tích hợp Thông báo In-App (Notification Integration):** Tự động phát thông báo In-App tới người bán (`product.SellerId`) theo kết quả kiểm duyệt: `PRODUCT_APPROVED` (khi `APPROVE`/`UNLOCK`), `PRODUCT_REJECTED` (khi `REJECT`), `PRODUCT_SUSPENDED` (khi `SUSPEND`), `PRODUCT_BANNED` (khi `BAN`). Toàn bộ lệnh gọi là non-blocking, không chặn flow xử lý nếu NotificationService offline.
 - **Tài liệu chi tiết:** Xem [`PATCH_admin_products_id_moderate.md`](api/Products/PATCH_admin_products_id_moderate.md).
 
 ---
@@ -988,8 +993,9 @@
 
 ### API 42. `POST /api/v1/products/{id}/reports` — Người dùng gửi đơn tố cáo sản phẩm vi phạm [CAT-57]
 - **Quyền hạn:** `[RequireRole("buyer", "seller")]`, bắt buộc `X-User-Id`.
-- **Endpoint Route:** `/api/v1/products/{id}/reports`
-- **Mô tả:** Khách hàng hoặc đối tác gửi báo cáo vi phạm chính sách của một sản phẩm (hàng giả, hàng cấm, sai mô tả, phản cảm, v.v.). Hệ thống tự động chống spam trùng lặp cho mỗi người dùng và sản phẩm khi đơn cũ còn đang được xử lý.
+- **Endpoint Route:** `/api/v1/products/{id}/reports` (`multipart/form-data`)
+- **Mô tả:** Khách hàng hoặc đối tác gửi báo cáo vi phạm chính sách của một sản phẩm (hàng giả, hàng cấm, sai mô tả, phản cảm, v.v.) **bắt buộc đính kèm tối thiểu 1 ảnh bằng chứng thật (`evidenceFiles`, từ 1 đến 5 file ảnh $\le$ 5MB, định dạng `.jpg`, `.jpeg`, `.png`, `.webp`)** để tránh tố cáo ảo và cạnh tranh không lành mạnh. Backend tự động upload ảnh lên Cloudinary thư mục `reports/evidence` và lưu link URL vào CSDL. Hệ thống tự động chống spam trùng lặp cho mỗi người dùng khi đơn cũ còn đang được xử lý.
+  - **Tích hợp Thông báo In-App:** Tự động gửi thông báo In-App `REPORT_SUBMITTED` tới người gửi tố cáo (`ReporterId`) xác nhận đơn đã được tiếp nhận và đang được đội ngũ Admin xác minh (non-blocking).
 - **Tài liệu chi tiết:** Xem [`POST_PRODUCTS_ID_REPORTS.md`](api/Reports/POST_PRODUCTS_ID_REPORTS.md).
 
 ---
@@ -1005,7 +1011,8 @@
 ### API 44. `PUT /api/v1/admin/reports/products/{reportId}/action` — Admin/Staff xử lý đơn tố cáo (Cấm sản phẩm hoặc Bác bỏ đơn) [CAT-59]
 - **Quyền hạn:** `[RequireRole("admin", "staff")]`, bắt buộc `X-User-Id`.
 - **Endpoint Route:** `/api/v1/admin/reports/products/{reportId}/action` (Canonical route duy nhất cho Admin/Staff).
-- **Mô tả:** Thực hiện phán quyết kiểm duyệt cho đơn tố cáo. Nếu chọn `BAN_PRODUCT`, hệ thống tự động chuyển trạng thái sản phẩm sang `Banned`, tắt toàn bộ biến thể, giải quyết toàn bộ các đơn tố cáo đang chờ của sản phẩm đó và ghi vết kiểm toán `AuditLog`. Nếu chọn `DISMISS`, bác bỏ tố cáo sai sự thật.
+- **Mô tả:** Thực hiện phán quyết kiểm duyệt cho đơn tố cáo. Nếu chọn `BAN_PRODUCT`, hệ thống tự động chuyển trạng thái sản phẩm sang `Banned`, tắt toàn bộ biến thể, giải quyết toàn bộ các đơn tố cáo đang chờ của sản phẩm đó, ghi vết kiểm toán `AuditLog`, và **tự động gọi UserService (`POST api/v1/internal/users/penalties`) để trừ 10 điểm uy tín người bán (`reason: "PRODUCT_BANNED_SELLER"`, non-blocking)**. Nếu chọn `DISMISS`, bác bỏ tố cáo sai sự thật.
+  - **Tích hợp Thông báo In-App:** Nếu chọn `BAN_PRODUCT`, tự động phát thông báo In-App `PRODUCT_BANNED_REPORT` tới người bán (`SellerId`) cảnh báo cấm sản phẩm và phạt trừ điểm uy tín, đồng thời phát thông báo `REPORT_RESOLVED` tới người mua gửi tố cáo (`ReporterId`). Nếu chọn `DISMISS`, tự động phát thông báo `REPORT_DISMISSED` tới người gửi tố cáo (toàn bộ non-blocking).
 - **Tài liệu chi tiết:** Xem [`PUT_ADMIN_REPORTS_ID_ACTION.md`](api/Reports/PUT_ADMIN_REPORTS_ID_ACTION.md).
 
 ---
@@ -1025,23 +1032,24 @@
 ### API 46. `GET /api/v1/products/{id}/reviews` — Xem danh sách đánh giá sản phẩm [CAT-61]
 - **Quyền hạn:** `Public` (Công khai).
 - **Endpoint Route:** `/api/v1/products/{id}/reviews`
-- **Mô tả:** Danh sách bài đánh giá đã duyệt (`Published`) có phân trang (`page`, `pageSize`), lọc theo số sao cụ thể (`rating: 1..5`), và sắp xếp (`newest`, `highest_rating`, `lowest_rating`).
+- **Mô tả:** Danh sách bài đánh giá đã duyệt (`Published`) có phân trang (`page`, `pageSize`), kèm mảng link ảnh thực tế `reviewImages`, lọc theo số sao cụ thể (`rating: 1..5`), và sắp xếp (`newest`, `highest_rating`, `lowest_rating`).
 - **Tài liệu chi tiết:** Xem [`GET_PRODUCTS_ID_REVIEWS.md`](api/Reviews/GET_PRODUCTS_ID_REVIEWS.md).
 
 ---
 
 ### API 47. `POST /api/v1/products/{id}/reviews` — Người mua gửi đánh giá sản phẩm sau khi mua thành công [CAT-62]
 - **Quyền hạn:** `[RequireRole("buyer", "admin")]`, bắt buộc Token & `X-User-Id`.
-- **Endpoint Route:** `/api/v1/products/{id}/reviews`
-- **Mô tả:** Người mua gửi đánh giá kèm `orderId`, `rating` (1–5 sao), `comment`. Hệ thống xác thực đơn mua hàng (`PurchaseRecord`), chống đánh giá trùng lặp (`ALREADY_REVIEWED`), và tự động cập nhật nguyên tử thống kê `ProductRatingStats`.
+- **Endpoint Route:** `/api/v1/products/{id}/reviews` (`multipart/form-data`)
+- **Mô tả:** Người mua gửi đánh giá kèm `orderId`, `rating` (1–5 sao), `comment` và **tùy chọn upload ảnh thực tế `reviewImages` (tối đa 5 file ảnh $\le$ 5MB, định dạng `.jpg`, `.jpeg`, `.png`, `.webp`)**. Hệ thống xác thực đơn mua hàng (`PurchaseRecord`), **kiểm tra thời hạn tối đa 30 ngày kể từ khi hoàn thành đơn (`REVIEW_WINDOW_EXPIRED`)**, chống đánh giá trùng lặp (`ALREADY_REVIEWED`), tải ảnh lên Cloudinary folder `reviews`, lưu URL vào cột `ReviewImages` (jsonb), tự động cập nhật nguyên tử thống kê `ProductRatingStats`, và **tự động gọi UserService (`POST api/v1/internal/users/reputation-adjust`) để chuyển số sao raw (`ratingStar`) và `orderId` cho UserService điều chỉnh điểm uy tín người bán (non-blocking)**.
+  - **Tích hợp Thông báo In-App:** Tự động phát thông báo In-App `NEW_PRODUCT_REVIEW` tới chủ shop (`SellerId`) cho mọi mức rating (1★ $\to$ 5★, đặc biệt kèm cảnh báo nguy cơ giảm điểm uy tín nếu $\le$ 2★, non-blocking).
 - **Tài liệu chi tiết:** Xem [`POST_PRODUCTS_ID_REVIEWS.md`](api/Reviews/POST_PRODUCTS_ID_REVIEWS.md).
 
 ---
 
 ### API 48. `PUT /api/v1/reviews/{id}` — Người mua chỉnh sửa đánh giá của chính mình [CAT-63]
 - **Quyền hạn:** `[RequireRole("buyer", "admin")]`, bắt buộc chính chủ sở hữu review (`BuyerId == currentUserId`).
-- **Endpoint Route:** `/api/v1/reviews/{id}`
-- **Mô tả:** Chỉnh sửa nhận xét hoặc điểm sao. Nếu điểm sao thay đổi, hệ thống tự động tính toán lại `StarSum` và `AvgRating` trong `ProductRatingStats`.
+- **Endpoint Route:** `/api/v1/reviews/{id}` (`multipart/form-data`)
+- **Mô tả:** Chỉnh sửa nhận xét, điểm sao hoặc cập nhật lại ảnh `reviewImages` **trong vòng 30 ngày kể từ ngày đăng bài (`REVIEW_UPDATE_EXPIRED`)**. Nếu điểm sao thay đổi, hệ thống tự động tính toán lại `StarSum` và `AvgRating` trong `ProductRatingStats`, và **tự động gọi UserService (`POST api/v1/internal/users/reputation-adjust`) để cập nhật lại uy tín người bán theo số sao mới (non-blocking)**.
 - **Tài liệu chi tiết:** Xem [`PUT_REVIEWS_ID.md`](api/Reviews/PUT_REVIEWS_ID.md).
 
 ---
@@ -1058,6 +1066,7 @@
 - **Quyền hạn:** `[RequireRole("admin")]`, bắt buộc Admin Token.
 - **Endpoint Route:** `/api/v1/admin/reviews/{id}/moderate`
 - **Mô tả:** Ẩn review vi phạm chuẩn mực (`HIDE`) hoặc khôi phục hiển thị (`PUBLISH`). Tự động loại trừ/cộng lại điểm sao trong `ProductRatingStats` và ghi vết kiểm toán `AuditLog`.
+  - **Tích hợp Thông báo In-App:** Khi Admin thực hiện hành động `HIDE`, tự động gửi thông báo In-App `REVIEW_HIDDEN` tới người viết đánh giá (`BuyerId`) giải thích lý do vi phạm (non-blocking).
 - **Tài liệu chi tiết:** Xem [`PATCH_ADMIN_REVIEWS_ID_MODERATE.md`](api/Reviews/PATCH_ADMIN_REVIEWS_ID_MODERATE.md).
 
 ---

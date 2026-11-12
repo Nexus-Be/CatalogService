@@ -1,8 +1,8 @@
 # CATALOG SERVICE - GET /api/v1/admin/products
 
-> **Feature / Use Case:** Quản trị viên và Nhân viên kiểm duyệt tìm kiếm, tra cứu toàn bộ sản phẩm trên hệ thống [CAT-50]  
+> **Feature / Use Case:** Quản trị viên và Nhân viên kiểm duyệt tìm kiếm, tra cứu toàn bộ sản phẩm trên hệ thống [CAT-50] (Hỗ trợ lọc hàng đợi chờ duyệt `PendingApproval`, sản phẩm bị từ chối `Rejected`, bị khóa `AdminLocked` hoặc cấm `Banned`)  
 > **Trạng thái:** ✅ VERIFIED  
-> **Ngày tạo:** 2026-11-07  
+> **Ngày cập nhật:** 2026-11-12  
 > **Tác giả:** Nexus Team & AI Agent  
 
 ---
@@ -26,13 +26,13 @@
 | `page` | `int` | Không | `1` | $\ge 1$ | Số trang hiện tại |
 | `pageSize` | `int` | Không | `20` | $1 \le \text{pageSize} \le 100$ | Số phần tử trên mỗi trang |
 | `keyword` | `string?` | Không | `null` | Max 100 ký tự | Tìm kiếm theo Tên sản phẩm hoặc Thương hiệu (`brand`) |
-| `status` | `ProductStatus?` | Không | `null` | `Draft`, `Active`, `Inactive`, `Auctioned` | Lọc theo trạng thái vòng đời sản phẩm |
-| `statusReason` | `ProductInactiveReason?`| Không | `null` | `None`, `SellerPaused`, `AdminLocked`, `OutOfStock`, `Discontinued` | Lọc theo lý do dừng bán / khóa sản phẩm |
+| `status` | `ProductStatus?` | Không | `null` | `Draft`, `PendingApproval`, `Active`, `Inactive`, `Auctioned`, `InAuction`, `Banned` | Lọc theo trạng thái vòng đời sản phẩm (Dùng `PendingApproval` để lấy hàng đợi chờ duyệt) |
+| `statusReason` | `ProductInactiveReason?`| Không | `null` | `None`, `SellerPaused`, `AdminLocked`, `OutOfStock`, `Discontinued`, `Rejected` | Lọc theo lý do dừng bán / khóa sản phẩm / từ chối duyệt |
 | `categoryId` | `Guid?` | Không | `null` | UUIDv4 | Lọc sản phẩm theo danh mục |
 | `sellerId` | `Guid?` | Không | `null` | UUIDv4 | Tra cứu toàn bộ sản phẩm của một Seller cụ thể |
-| `saleType` | `SaleType?` | Không | `null` | `Normal`, `Auction` | Lọc theo loại hình bán hàng (thương mại thường hoặc đấu giá) |
+| `saleType` | `SaleType?` | Không | `null` | `Regular`, `Auction` | Lọc theo loại hình bán hàng (thương mại thường hoặc đấu giá) |
 | `sortBy` | `string?` | Không | `createdat` | `createdat`, `name`, `status` | Trường sắp xếp |
-| `sortDirection`| `string?` | Không | `desc` | `asc`, `desc` | Hướng sắp xếp |
+| `sortDirection`| `string?` | Không | `desc` | `asc`, `desc` | Hướng sắp xếp (mặc định mới nhất trước) |
 
 ---
 
@@ -59,34 +59,34 @@ public sealed record AdminProductListItemDto(
     DateTimeOffset? PublishedAt);
 ```
 
-- **JSON Response mẫu (camelCase):**
+- **JSON Response Body mẫu (Hàng đợi chờ duyệt):**
 ```json
 {
   "items": [
     {
-      "productId": "77777777-7777-7777-7777-777777777777",
-      "sellerId": "11111111-1111-1111-1111-111111111111",
-      "categoryId": "22222222-2222-2222-2222-222222222222",
-      "categoryName": "Tranh & Tác phẩm Nghệ thuật",
-      "name": "Bức Họa Cổ Phong Cảnh Mùa Thu",
-      "brand": "Nexus Art",
-      "saleType": "Auction",
-      "status": "Inactive",
-      "statusReason": "AdminLocked",
-      "minPrice": 5000000.00,
-      "maxPrice": 5000000.00,
-      "primaryImageUrl": "https://res.cloudinary.com/nexus/image/upload/v1/autumn-painting.jpg",
-      "createdAt": "2026-11-06T14:00:00Z",
+      "productId": "f3f47581-6036-4fa1-b9fa-803770308c71",
+      "sellerId": "cccccccc-3333-3333-3333-333333333333",
+      "categoryId": "250ac1a7-eef4-43f4-9d0d-310755f735c4",
+      "categoryName": "Quần",
+      "name": "Quần Jogger Nexus Streetwear",
+      "brand": "Nexus Wear",
+      "saleType": "Regular",
+      "status": "PendingApproval",
+      "statusReason": null,
+      "minPrice": 350000.00,
+      "maxPrice": 350000.00,
+      "primaryImageUrl": "https://res.cloudinary.com/nexus/image/upload/v1/products/jogger-1.webp",
+      "createdAt": "2026-11-12T02:29:02Z",
       "publishedAt": null
     }
   ],
   "pagination": {
-    "pageIndex": 1,
+    "page": 1,
     "pageSize": 20,
     "totalCount": 1,
     "totalPages": 1,
-    "hasPreviousPage": false,
-    "hasNextPage": false
+    "hasNextPage": false,
+    "hasPreviousPage": false
   }
 }
 ```
@@ -94,10 +94,9 @@ public sealed record AdminProductListItemDto(
 ---
 
 ## 4. Ma trận Mã lỗi RFC 9110 (Error Matrix)
-| HTTP Status | Error Code | Detail | Điều kiện phát sinh |
-| :---: | :--- | :--- | :--- |
-| `400 Bad Request` | `VAL_INVALID_PAGINATION` | Page must be greater than or equal to 1, and pageSize must be between 1 and 100. | `page < 1` hoặc `pageSize < 1` hoặc `pageSize > 100` |
-| `401 Unauthorized` | `UNAUTHORIZED` | Authentication credentials were missing or invalid. | Thiếu token xác thực hoặc header định danh |
-| `403 Forbidden` | `FORBIDDEN` | Access denied. Required role: admin, staff. | Người dùng không mang vai trò `admin` hoặc `staff` |
-| `500 Internal Error` | `INTERNAL_SERVER_ERROR` | An unexpected error occurred. | Lỗi cơ sở dữ liệu hoặc hệ thống |
 
+| HTTP Status | Error Code | Detail Message (Sentence case) | Điều kiện kích hoạt |
+| :---: | :--- | :--- | :--- |
+| `401 Unauthorized` | `UNAUTHORIZED` | `Authentication is required to access this resource.` | Không gửi kèm token hoặc token không hợp lệ |
+| `403 Forbidden` | `FORBIDDEN` | `You do not have permission to access or modify this resource.` | Token không có role `admin` hoặc `staff` |
+| `500 Internal Error` | `INTERNAL_SERVER_ERROR` | `An unexpected error occurred while processing the request.` | Lỗi hệ thống khi truy vấn database |

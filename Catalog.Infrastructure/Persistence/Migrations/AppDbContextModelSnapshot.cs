@@ -688,6 +688,9 @@ namespace Catalog.Infrastructure.Persistence.Migrations
                     b.Property<short>("Rating")
                         .HasColumnType("smallint");
 
+                    b.Property<string>("ReviewImages")
+                        .HasColumnType("jsonb");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 

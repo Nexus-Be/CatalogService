@@ -1,6 +1,7 @@
 namespace Catalog.Application.Services.Report;
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Catalog.Application.Common.Models;
@@ -11,6 +12,7 @@ public interface IProductReportService
         Guid productId,
         CreateProductReportRequest request,
         Guid reporterId,
+        IReadOnlyList<FileUploadModel>? evidenceFiles = null,
         CancellationToken cancellationToken = default);
 
     Task<PagedData<ProductReportListItemDto>> GetAdminReportsAsync(

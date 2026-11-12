@@ -22,9 +22,10 @@ services:
       - 1.1.1.1
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
-      ConnectionStrings__DefaultConnection: "${CATALOG_DB_CONNECTION:?CATALOG_DB_CONNECTION is required}"
+      ConnectionStrings__DefaultConnection: "${CATALOG_DB_CONNECTION:-${NEON_CONNECTION_STRING:-${CONNECTION_STRING}}}"
       FULFILLMENT_SERVICE_URL: "${FULFILLMENT_SERVICE_URL:-http://fulfillment-service:8006}"
       USER_SERVICE_URL: "${USER_SERVICE_URL:-http://user-service:8001}"
+      NOTIFICATION_SERVICE_URL: "${NOTIFICATION_SERVICE_URL:-http://notification-service:8007}"
       InternalSecurity__ServiceKey: "${INTERNAL_SERVICE_SECRET:-eaT0Ombups70WJzd85CBBpp8rAno55SxKn1qvYBGH9e}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4317}"
     restart: unless-stopped

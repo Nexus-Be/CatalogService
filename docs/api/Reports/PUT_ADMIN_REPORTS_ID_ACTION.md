@@ -1,8 +1,8 @@
 # CATALOG SERVICE - PUT /api/v1/admin/reports/products/{reportId}/action
 
 > **Feature / Use Case:** Quản trị viên và Nhân viên đưa ra phán quyết xử lý đơn tố cáo vi phạm sản phẩm [CAT-59]  
-> **Trạng thái:** ⏳ DRAFT (Pre-Code Specification)  
-> **Ngày tạo:** 2026-11-10  
+> **Trạng thái:** ✅ VERIFIED  
+> **Ngày cập nhật:** 2026-11-12  
 > **Tác giả:** Nexus Team & AI Agent  
 
 ---
@@ -94,10 +94,18 @@ public sealed record ModerateProductReportRequest(
         }
         ```
      5. Ghi nhật ký kiểm toán vào `AuditLogs` với `Action = AuditAction.ProductBan`.
+     6. **Tích hợp liên dịch vụ (S2S UserService):** Khi phán quyết là `BAN_PRODUCT`, CatalogService tự động gửi yêu cầu trừ 10 điểm uy tín người bán sang UserService:
+        - **Endpoint gọi:** `POST api/v1/internal/users/penalties` (Port 8001)
+        - **Payload:** `{ "userId": "<sellerId>", "targetRole": "Seller", "penaltyPoints": 10, "reason": "PRODUCT_BANNED_SELLER", "referenceId": "<productId>" }`
+        - **Cơ chế chịu lỗi:** Non-blocking resilient execution (bọc try-catch và log warning). Nếu UserService tạm thời gián đoạn hoặc gặp lỗi DB, phán quyết cấm sản phẩm trong CatalogService vẫn hoàn tất thành công (`200 OK`).
+     7. **Tự động gửi thông báo In-App qua NotificationService:**
+        - **Cho Seller bị phạt:** Gửi `PRODUCT_BANNED_REPORT` ("CẢNH BÁO: Sản phẩm bị cấm do đơn tố cáo vi phạm", thông báo cấm vĩnh viễn và bị trừ 10 điểm uy tín).
+        - **Cho Buyer gửi đơn:** Gửi `REPORT_RESOLVED` ("Đơn tố cáo sản phẩm đã được xử lý thành công").
 3. **Xử lý Hành động `DISMISS` (Bác bỏ tố cáo):**
    - Cập nhật đơn: `Status = ReportStatus.Dismissed`, `ReviewedBy = adminId`, `ReviewedAt = DateTimeOffset.UtcNow`, `ResolutionNote = request.ResolutionNote`.
    - Sản phẩm vẫn giữ nguyên trạng thái hiện tại (không bị ảnh hưởng).
    - Ghi nhận `AuditLog`.
+   - **Gửi thông báo In-App cho Buyer:** Gửi `REPORT_DISMISSED` ("Thông báo kết quả xử lý đơn tố cáo", kèm lý do bác bỏ `ResolutionNote`).
 4. **Xử lý Hành động `INVESTIGATE` (Tiếp nhận điều tra):**
    - Chuyển `Status = ReportStatus.Investigating`.
    - Lưu `ReviewedBy = adminId`, ghi chú điều tra nội bộ.
