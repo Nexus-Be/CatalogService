@@ -28,6 +28,7 @@
 
 ### 3.1 DTO Phản hồi (`ProductDto`)
 * **HTTP Status:** `200 OK`
+* **Tính chất Idempotent:** Nếu sản phẩm đã ở trạng thái `InAuction`, Catalog lập tức trả về `200 OK` với thông tin sản phẩm hiện tại, đảm bảo an toàn tuyệt đối khi AuctionService retry do chập chờn mạng.
 * **JSON Response Mẫu:**
 ```json
 {
@@ -47,9 +48,8 @@
 ## 4. Ma trận Mã Lỗi (Error Matrix RFC 9110)
 | HTTP Status | Error Code (`errorCode`) | Error Message (`detail`) | Nguyên nhân |
 | :--- | :--- | :--- | :--- |
-| `400 Bad Request` | `PRODUCT_ALREADY_IN_AUCTION` | Product is already locked in an active auction. | Sản phẩm đã đang nằm trong một phiên đấu giá mở khác |
 | `400 Bad Request` | `PRODUCT_ALREADY_AUCTIONED` | Auctioned products cannot be put into auction again. | Sản phẩm đã bán xong trước đó |
 | `400 Bad Request` | `VAL_INVALID_INPUT` | This operation is only valid for auction products. | Sản phẩm là hàng thường (`Regular`), không phải hàng đấu giá |
-| `400 Bad Request` | `VAL_INVALID_INPUT` | Cannot lock product with status '{status}' for auction. Product must be in Active status. | Sản phẩm đang ở trạng thái `Draft` hoặc `Inactive` |
+| `400 Bad Request` | `VAL_INVALID_INPUT` | Cannot lock product with status '{status}' for auction. Product must be in Active status. | Sản phẩm đang ở trạng thái `Draft`, `PendingApproval`, `Inactive` hoặc `Banned` |
 | `404 Not Found` | `PRODUCT_NOT_FOUND` | Product with id '{id}' was not found. | ID sản phẩm không tồn tại hoặc đã bị xóa |
 
