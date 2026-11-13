@@ -3002,7 +3002,16 @@ public sealed class ProductService : IProductService
 
         if (product.Status == ProductStatus.InAuction)
         {
-            throw new BusinessRuleValidationException("PRODUCT_ALREADY_IN_AUCTION", "Product is already locked in an active auction.");
+            // Idempotent: already locked in an active auction
+            return new ProductDto(
+                product.Id,
+                product.SellerId,
+                product.CategoryId,
+                product.Name,
+                product.Description,
+                product.Brand,
+                product.Status.ToString(),
+                product.WeightGrams);
         }
 
         if (product.Status == ProductStatus.Auctioned)
@@ -3051,6 +3060,20 @@ public sealed class ProductService : IProductService
         if (product.SaleType != SaleType.Auction)
         {
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "This operation is only valid for auction products.");
+        }
+
+        if (product.Status == ProductStatus.Active)
+        {
+            // Idempotent: already active / unlocked
+            return new ProductDto(
+                product.Id,
+                product.SellerId,
+                product.CategoryId,
+                product.Name,
+                product.Description,
+                product.Brand,
+                product.Status.ToString(),
+                product.WeightGrams);
         }
 
         if (product.Status != ProductStatus.InAuction)
