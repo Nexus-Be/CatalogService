@@ -83,6 +83,46 @@ public class ProductReviewsController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Whether the signed-in buyer may review this product of the given sub-order (<c>orderId</c>), and whether they already did.
+    /// This answers for product reviews only; reviewing the seller is a separate question answered by UserService.
+    /// </summary>
+    [HttpGet("api/v1/products/{id:guid}/reviews/eligibility")]
+    [RequireRole("buyer", "admin")]
+    [ProducesResponseType(typeof(ProductReviewEligibilityDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetEligibility(
+        [FromRoute] Guid id,
+        [FromQuery] Guid orderId,
+        CancellationToken ct)
+    {
+        if (!this.TryGetUserId(out var currentUserId, out var errorResult))
+        {
+            return errorResult;
+        }
+
+        if (orderId == Guid.Empty)
+        {
+            return this.BadRequestError("VAL_INVALID_INPUT", "Order ID must be the ID of a sub-order.");
+        }
+
+        return Ok(await _reviewService.GetEligibilityAsync(id, orderId, currentUserId, ct));
+    }
+
+    /// <summary>The signed-in buyer's own reviews of this product, with the sub-order each belongs to.</summary>
+    [HttpGet("api/v1/products/{id:guid}/reviews/mine")]
+    [RequireRole("buyer", "admin")]
+    [ProducesResponseType(typeof(IReadOnlyList<MyProductReviewDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetMyReviews([FromRoute] Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetUserId(out var currentUserId, out var errorResult))
+        {
+            return errorResult;
+        }
+
+        return Ok(await _reviewService.GetMyReviewsAsync(id, currentUserId, ct));
+    }
+
     /// <summary>Creates a product review with optional images after completing a purchase (CAT-62).</summary>
     [HttpPost("api/v1/products/{id:guid}/reviews")]
     [RequireRole("buyer", "admin")]

@@ -165,7 +165,8 @@ public sealed record SellerProductVariantDto(
     bool HasOrder,
     IReadOnlyList<ProductVariantAttributeDto> Attributes,
     IReadOnlyList<ProductImageDto> Images,
-    int? WeightGrams = null);
+    int? WeightGrams = null,
+    string InventoryInitState = "NotRequired");
 
 public sealed record SellerProductDetailDto(
     Guid ProductId,

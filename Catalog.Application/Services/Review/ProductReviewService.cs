@@ -133,6 +133,66 @@ public sealed class ProductReviewService : IProductReviewService
         return new PagedData<ProductReviewDto>(items, PaginationMetadata.Create(page, pageSize, totalItems));
     }
 
+    public async Task<ProductReviewEligibilityDto> GetEligibilityAsync(
+        Guid productId,
+        Guid orderId,
+        Guid buyerId,
+        CancellationToken cancellationToken = default)
+    {
+        var product = await _dbContext.Products
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == productId && !p.IsDeleted, cancellationToken)
+            ?? throw new EntityNotFoundException("PRODUCT_NOT_FOUND", "Product", productId);
+
+        var purchase = await _dbContext.PurchaseRecords
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.BuyerId == buyerId && p.ProductId == productId && p.OrderId == orderId && !p.IsDeleted,
+                cancellationToken);
+
+        if (purchase is null)
+        {
+            return new ProductReviewEligibilityDto(false, false, "PURCHASE_NOT_FOUND", null, null);
+        }
+
+        var existing = await _dbContext.ProductReviews
+            .AsNoTracking()
+            .Where(r => r.PurchaseRecordId == purchase.Id && !r.IsDeleted)
+            .Select(r => (Guid?)r.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var expiresAt = purchase.CompletedAt.AddDays(MaxReviewPeriodDays);
+        string? reason = existing is not null ? "ALREADY_REVIEWED"
+            : product.Status == ProductStatus.Banned ? "PRODUCT_BANNED"
+            : DateTimeOffset.UtcNow > expiresAt ? "REVIEW_WINDOW_EXPIRED"
+            : null;
+
+        return new ProductReviewEligibilityDto(reason is null, existing is not null, reason, existing, expiresAt);
+    }
+
+    public async Task<IReadOnlyList<MyProductReviewDto>> GetMyReviewsAsync(
+        Guid productId,
+        Guid buyerId,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await _dbContext.ProductReviews
+            .AsNoTracking()
+            .Include(r => r.PurchaseRecord)
+            .Where(r => r.ProductId == productId && r.BuyerId == buyerId && !r.IsDeleted)
+            .OrderByDescending(r => r.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(r => new MyProductReviewDto(
+            r.Id,
+            r.ProductId,
+            r.PurchaseRecord?.OrderId ?? Guid.Empty,
+            r.Rating,
+            r.Comment,
+            DeserializeImages(r.ReviewImages),
+            r.Status.ToString(),
+            r.CreatedAt,
+            r.UpdatedAt)).ToList();
+    }
+
     public async Task<ProductReviewDto> CreateReviewAsync(
         Guid productId,
         CreateProductReviewRequest request,

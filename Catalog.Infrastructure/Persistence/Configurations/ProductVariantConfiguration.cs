@@ -15,6 +15,8 @@ public class ProductVariantConfiguration : IEntityTypeConfiguration<ProductVaria
         builder.Property(x => x.Price).HasPrecision(18, 2);
         builder.Property(x => x.Currency).HasMaxLength(10);
         builder.Property(x => x.WeightGrams).IsRequired(false);
+        builder.Property(x => x.InventoryInitLastError).HasMaxLength(500);
+        builder.HasIndex(x => new { x.InventoryInitState, x.InventoryInitNextRetryAt });
 
         builder.HasOne(v => v.Product)
             .WithMany(p => p.Variants)

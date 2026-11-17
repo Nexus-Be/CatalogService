@@ -16,6 +16,22 @@ public interface IProductReviewService
         ReviewListQuery query,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Whether the buyer may review this product of this sub-order, using the same rules as <see cref="CreateReviewAsync"/>
+    /// (a completed purchase, within 30 days, once per purchase).
+    /// </summary>
+    Task<ProductReviewEligibilityDto> GetEligibilityAsync(
+        Guid productId,
+        Guid orderId,
+        Guid buyerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>The buyer's own reviews of one product, one per purchase, newest first.</summary>
+    Task<IReadOnlyList<MyProductReviewDto>> GetMyReviewsAsync(
+        Guid productId,
+        Guid buyerId,
+        CancellationToken cancellationToken = default);
+
     Task<ProductReviewDto> CreateReviewAsync(
         Guid productId,
         CreateProductReviewRequest request,
