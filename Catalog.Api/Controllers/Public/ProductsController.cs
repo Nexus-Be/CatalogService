@@ -233,9 +233,9 @@ public class ProductsController : ControllerBase
     public Task<IActionResult> Patch([FromRoute] Guid id, [FromBody] UpdateProductRequest request, CancellationToken ct)
         => Update(id, request, ct);
 
-    /// <summary>Changes product status (DRAFT, ACTIVE, INACTIVE) (CAT-03). Requires product owner or admin.</summary>
+    /// <summary>Changes product status (DRAFT, ACTIVE, INACTIVE) (CAT-03). Requires product owner or admin/staff.</summary>
     [HttpPatch("{id:guid}/status")]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller", "admin", "staff")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]

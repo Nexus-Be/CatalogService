@@ -2618,8 +2618,8 @@ public sealed class ProductService : IProductService
                 SaleType = p.SaleType.ToString(),
                 Status = p.Status.ToString(),
                 StatusReason = p.StatusReason != null ? p.StatusReason.ToString() : null,
-                MinPrice = p.Variants.Where(v => !v.IsDeleted && v.Status == VariantStatus.Active).Min(v => v.Price),
-                MaxPrice = p.Variants.Where(v => !v.IsDeleted && v.Status == VariantStatus.Active).Max(v => v.Price),
+                MinPrice = p.Variants.Where(v => !v.IsDeleted && v.Status == VariantStatus.Active).Min(v => v.Price) ?? p.Variants.Where(v => !v.IsDeleted).Min(v => v.Price),
+                MaxPrice = p.Variants.Where(v => !v.IsDeleted && v.Status == VariantStatus.Active).Max(v => v.Price) ?? p.Variants.Where(v => !v.IsDeleted).Max(v => v.Price),
                 PrimaryImageUrl = p.Images
                     .Where(i => !i.IsDeleted && i.IsActive)
                     .OrderBy(i => i.SortOrder)
@@ -2682,6 +2682,21 @@ public sealed class ProductService : IProductService
         var oldStatus = product.Status;
         var oldReason = product.StatusReason;
         var now = DateTimeOffset.UtcNow;
+
+        if (action == "APPROVE")
+        {
+            if (product.Status != ProductStatus.PendingApproval && product.Status != ProductStatus.Draft)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Cannot approve product with status '{product.Status}'. Use UNLOCK to re-activate a suspended product.");
+            }
+        }
+        else if (action == "UNLOCK")
+        {
+            if (product.Status != ProductStatus.Inactive)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Cannot unlock product with status '{product.Status}'. Product must be Inactive with AdminLocked reason.");
+            }
+        }
 
         if (action == "APPROVE" || action == "UNLOCK")
         {
@@ -3076,6 +3091,16 @@ public sealed class ProductService : IProductService
                 product.WeightGrams);
         }
 
+        if (product.Status == ProductStatus.Auctioned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_AUCTIONED", "Cannot unlock product that has already been auctioned.");
+        }
+
+        if (product.Status == ProductStatus.Banned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_BANNED", "Product has been permanently banned and cannot be unlocked.");
+        }
+
         if (product.Status != ProductStatus.InAuction)
         {
             throw new BusinessRuleValidationException("PRODUCT_NOT_IN_AUCTION", $"Product is not currently in an active auction. Current status is '{product.Status}'.");
@@ -3117,6 +3142,11 @@ public sealed class ProductService : IProductService
         if (product.SaleType != SaleType.Auction)
         {
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "This operation is only valid for auction products.");
+        }
+
+        if (product.Status == ProductStatus.Banned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_BANNED", "Product has been permanently banned and cannot be marked as auctioned.");
         }
 
         if (product.Status == ProductStatus.Auctioned)
