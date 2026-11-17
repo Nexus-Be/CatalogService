@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Catalog.Application.Common;
 using Catalog.Application.Common.Extensions;
 using Catalog.Application.Common.Models;
@@ -23,19 +24,25 @@ public sealed class ProductService : IProductService
     private readonly IImageStorageService _imageStorageService;
     private readonly IUserClient _userClient;
     private readonly INotificationClient _notificationClient;
+    private readonly ILogger<ProductService> _logger;
+    private readonly IProductInventoryInitializer _inventoryInitializer;
 
     public ProductService(
         ICatalogDbContext dbContext,
         IFulfillmentClient fulfillmentClient,
         IImageStorageService imageStorageService,
         IUserClient userClient,
-        INotificationClient notificationClient)
+        INotificationClient notificationClient,
+        ILogger<ProductService> logger,
+        IProductInventoryInitializer inventoryInitializer)
     {
+        _inventoryInitializer = inventoryInitializer;
         _dbContext = dbContext;
         _fulfillmentClient = fulfillmentClient;
         _imageStorageService = imageStorageService;
         _userClient = userClient;
         _notificationClient = notificationClient;
+        _logger = logger;
     }
 
     // -------------------------------------------------------------
@@ -712,7 +719,12 @@ public sealed class ProductService : IProductService
             product.CategoryId = request.CategoryId.Value;
         }
 
-        var oldValues = new { product.Name, product.Description, product.Brand, product.CategoryId, product.SaleType, product.Status };
+        if (request.WeightGrams.HasValue && request.WeightGrams.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Shipping weight must be greater than zero.");
+        }
+
+        var oldValues = new { product.Name, product.Description, product.Brand, product.CategoryId, product.SaleType, product.Status, product.WeightGrams };
 
         product.Name = trimmedName;
         product.Description = request.Description?.Trim();
@@ -738,6 +750,12 @@ public sealed class ProductService : IProductService
             product.Specifications = ProductSpecificationHelper.ValidateAndSerialize(request.Specifications);
         }
 
+        // The shipping fee is quoted from this weight (or the SKU's own), so it must be editable after the product is created.
+        if (request.WeightGrams.HasValue)
+        {
+            product.WeightGrams = request.WeightGrams.Value;
+        }
+
         product.UpdatedAt = DateTimeOffset.UtcNow;
         product.UpdatedBy = currentUserId;
 
@@ -746,7 +764,7 @@ public sealed class ProductService : IProductService
             "Product",
             product.Id.ToString(),
             oldValues: oldValues,
-            newValues: new { product.Name, product.Description, product.Brand, product.CategoryId, product.SaleType, product.Status },
+            newValues: new { product.Name, product.Description, product.Brand, product.CategoryId, product.SaleType, product.Status, product.WeightGrams },
             userId: currentUserId.ToString());
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -1526,39 +1544,16 @@ public sealed class ProductService : IProductService
             }
         }
 
-        using (var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken))
-        {
-            try
-            {
-                _dbContext.ProductVariants.Add(variant);
-                await _dbContext.SaveChangesAsync(cancellationToken);
+        var needsInventory = product.SaleType == SaleType.Regular && product.Status == ProductStatus.Active;
+        if (needsInventory)
+            ProductInventoryInitializer.MarkPending(variant, DateTimeOffset.UtcNow);
 
-                // If product is already Active, register the new SKU in Fulfillment warehouse with initialQuantity = 0
-                if (product.SaleType == SaleType.Regular && product.Status == ProductStatus.Active)
-                {
-                    var invResult = await _fulfillmentClient.InitializeInventoryForSkuAsync(
-                        variant.Id,
-                        product.SellerId,
-                        initialQuantity: 0,
-                        cancellationToken);
+        _dbContext.ProductVariants.Add(variant);
+        await _dbContext.SaveChangesAsync(cancellationToken);
 
-                    if (invResult == null)
-                    {
-                        throw new DomainException(
-                            "FULFILLMENT_UNAVAILABLE",
-                            $"Cannot initialize inventory for SKU '{variant.SkuCode}'. Fulfillment service is unavailable or returned an error.",
-                            502);
-                    }
-                }
-
-                await transaction.CommitAsync(cancellationToken);
-            }
-            catch
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                throw;
-            }
-        }
+        if (needsInventory)
+            // The SKU is already saved: a client disconnect must not cut this short, so it runs without the request token.
+            await _inventoryInitializer.TryInitializeAsync(new[] { variant }, product.SellerId, CancellationToken.None);
 
         var isPurchasable = !variant.IsDeleted &&
             variant.Status == VariantStatus.Active &&
@@ -2019,7 +2014,8 @@ public sealed class ProductService : IProductService
                     v.HasOrder,
                     attrs,
                     vImages,
-                    v.WeightGrams);
+                    v.WeightGrams,
+                    v.InventoryInitState.ToString());
             })
             .ToList();
 
@@ -2618,8 +2614,8 @@ public sealed class ProductService : IProductService
                 SaleType = p.SaleType.ToString(),
                 Status = p.Status.ToString(),
                 StatusReason = p.StatusReason != null ? p.StatusReason.ToString() : null,
-                MinPrice = p.Variants.Where(v => !v.IsDeleted && v.Status == VariantStatus.Active).Min(v => v.Price),
-                MaxPrice = p.Variants.Where(v => !v.IsDeleted && v.Status == VariantStatus.Active).Max(v => v.Price),
+                MinPrice = p.Variants.Where(v => !v.IsDeleted && v.Status == VariantStatus.Active).Min(v => v.Price) ?? p.Variants.Where(v => !v.IsDeleted).Min(v => v.Price),
+                MaxPrice = p.Variants.Where(v => !v.IsDeleted && v.Status == VariantStatus.Active).Max(v => v.Price) ?? p.Variants.Where(v => !v.IsDeleted).Max(v => v.Price),
                 PrimaryImageUrl = p.Images
                     .Where(i => !i.IsDeleted && i.IsActive)
                     .OrderBy(i => i.SortOrder)
@@ -2682,6 +2678,22 @@ public sealed class ProductService : IProductService
         var oldStatus = product.Status;
         var oldReason = product.StatusReason;
         var now = DateTimeOffset.UtcNow;
+        List<ProductVariant>? inventoryVariants = null;
+
+        if (action == "APPROVE")
+        {
+            if (product.Status != ProductStatus.PendingApproval && product.Status != ProductStatus.Draft)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Cannot approve product with status '{product.Status}'. Use UNLOCK to re-activate a suspended product.");
+            }
+        }
+        else if (action == "UNLOCK")
+        {
+            if (product.Status != ProductStatus.Inactive)
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Cannot unlock product with status '{product.Status}'. Product must be Inactive with AdminLocked reason.");
+            }
+        }
 
         if (action == "APPROVE" || action == "UNLOCK")
         {
@@ -2730,28 +2742,15 @@ public sealed class ProductService : IProductService
                 v.Status = VariantStatus.Active;
             }
 
-            // Initialize physical warehouse inventory in FulfillmentService upon Admin/Staff approval
+            // Every active SKU of a Regular product needs its inventory row in FulfillmentService. The state is saved with the
+            // approval, then tried once below; a failure stays Pending and the background worker retries it.
             if (oldStatus != ProductStatus.Active && product.SaleType == SaleType.Regular)
             {
-                var activeVariants = product.Variants
+                inventoryVariants = product.Variants
                     .Where(v => !v.IsDeleted && v.Status == VariantStatus.Active)
                     .ToList();
-
-                foreach (var variant in activeVariants)
-                {
-                    try
-                    {
-                        await _fulfillmentClient.InitializeInventoryForSkuAsync(
-                            variant.Id,
-                            product.SellerId,
-                            initialQuantity: 0,
-                            cancellationToken: cancellationToken);
-                    }
-                    catch
-                    {
-                        // Non-blocking: Fulfillment logging or connection failure should not abort product approval
-                    }
-                }
+                foreach (var variant in inventoryVariants)
+                    ProductInventoryInitializer.MarkPending(variant, now);
             }
         }
         else if (action == "REJECT")
@@ -2817,6 +2816,10 @@ public sealed class ProductService : IProductService
             userId: adminId.ToString());
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        if (inventoryVariants is { Count: > 0 })
+            // The SKU is already saved: a client disconnect must not cut this short, so it runs without the request token.
+            await _inventoryInitializer.TryInitializeAsync(inventoryVariants, product.SellerId, CancellationToken.None);
 
         // Deduct 10 reputation points from Seller when Product is banned due to violations (P2-06)
         if (action == "BAN" && product.SellerId != Guid.Empty)
@@ -3002,7 +3005,16 @@ public sealed class ProductService : IProductService
 
         if (product.Status == ProductStatus.InAuction)
         {
-            throw new BusinessRuleValidationException("PRODUCT_ALREADY_IN_AUCTION", "Product is already locked in an active auction.");
+            // Idempotent: already locked in an active auction
+            return new ProductDto(
+                product.Id,
+                product.SellerId,
+                product.CategoryId,
+                product.Name,
+                product.Description,
+                product.Brand,
+                product.Status.ToString(),
+                product.WeightGrams);
         }
 
         if (product.Status == ProductStatus.Auctioned)
@@ -3053,6 +3065,30 @@ public sealed class ProductService : IProductService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "This operation is only valid for auction products.");
         }
 
+        if (product.Status == ProductStatus.Active)
+        {
+            // Idempotent: already active / unlocked
+            return new ProductDto(
+                product.Id,
+                product.SellerId,
+                product.CategoryId,
+                product.Name,
+                product.Description,
+                product.Brand,
+                product.Status.ToString(),
+                product.WeightGrams);
+        }
+
+        if (product.Status == ProductStatus.Auctioned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_AUCTIONED", "Cannot unlock product that has already been auctioned.");
+        }
+
+        if (product.Status == ProductStatus.Banned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_BANNED", "Product has been permanently banned and cannot be unlocked.");
+        }
+
         if (product.Status != ProductStatus.InAuction)
         {
             throw new BusinessRuleValidationException("PRODUCT_NOT_IN_AUCTION", $"Product is not currently in an active auction. Current status is '{product.Status}'.");
@@ -3094,6 +3130,11 @@ public sealed class ProductService : IProductService
         if (product.SaleType != SaleType.Auction)
         {
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "This operation is only valid for auction products.");
+        }
+
+        if (product.Status == ProductStatus.Banned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_ALREADY_BANNED", "Product has been permanently banned and cannot be marked as auctioned.");
         }
 
         if (product.Status == ProductStatus.Auctioned)

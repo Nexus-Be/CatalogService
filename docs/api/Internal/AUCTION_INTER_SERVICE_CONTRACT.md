@@ -48,6 +48,7 @@
 
 ### 2.2. Khóa sản phẩm khi mở phiên (`lock-auction`)
 * **URL:** `POST http://catalog-service:8002/api/v1/internal/products/{productId}/lock-auction`
+* **Tính chất:** Idempotent 100% (Nếu sản phẩm đã là `InAuction`, gọi lại vẫn trả về 200 OK thành công).
 * **Response Thành công (200 OK):**
 ```json
 {
@@ -60,15 +61,15 @@
 }
 ```
 * **Lỗi có thể trả về:**
-  - `400 Bad Request` (`PRODUCT_ALREADY_IN_AUCTION`): Sản phẩm đã đang nằm trong một phiên đấu giá mở khác.
   - `400 Bad Request` (`PRODUCT_ALREADY_AUCTIONED`): Sản phẩm đã bán xong trước đó.
-  - `400 Bad Request` (`VAL_INVALID_INPUT`): Sản phẩm không ở trạng thái Active (ví dụ đang Draft hoặc Inactive).
+  - `400 Bad Request` (`VAL_INVALID_INPUT`): Sản phẩm không ở trạng thái Active (ví dụ đang Draft, Inactive, Banned).
   - `404 Not Found` (`PRODUCT_NOT_FOUND`): Không tìm thấy sản phẩm.
 
 ---
 
 ### 2.3. Mở khóa sản phẩm (`unlock-auction`)
 * **URL:** `POST http://catalog-service:8002/api/v1/internal/products/{productId}/unlock-auction`
+* **Tính chất:** Idempotent 100% (Nếu sản phẩm đã là `Active`, gọi lại vẫn trả về 200 OK thành công).
 * **Response Thành công (200 OK):**
 ```json
 {
@@ -81,7 +82,7 @@
 }
 ```
 * **Lỗi có thể trả về:**
-  - `400 Bad Request` (`PRODUCT_NOT_IN_AUCTION`): Sản phẩm hiện không ở trạng thái `InAuction`.
+  - `400 Bad Request` (`PRODUCT_NOT_IN_AUCTION`): Sản phẩm ở trạng thái khác ngoài `InAuction` hoặc `Active`.
   - `404 Not Found` (`PRODUCT_NOT_FOUND`): Không tìm thấy sản phẩm.
 
 ---

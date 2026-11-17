@@ -744,6 +744,19 @@ namespace Catalog.Infrastructure.Persistence.Migrations
                     b.Property<bool>("HasOrder")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("InventoryInitAttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("InventoryInitLastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("InventoryInitNextRetryAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("InventoryInitState")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -788,6 +801,8 @@ namespace Catalog.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("SkuCode")
                         .IsUnique();
+
+                    b.HasIndex("InventoryInitState", "InventoryInitNextRetryAt");
 
                     b.ToTable("ProductVariants");
 

@@ -13,6 +13,8 @@ using Catalog.Application.Interfaces;
 
 public sealed class FulfillmentClient : IFulfillmentClient
 {
+    internal const string InternalInitializePath = "api/v1/internal/inventories/initialize";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -121,7 +123,8 @@ public sealed class FulfillmentClient : IFulfillmentClient
                 note = request.Note ?? "Initial inventory declared by CatalogService"
             };
 
-            var response = await _httpClient.PostAsJsonAsync("api/v1/inventories/initialize", payload, cancellationToken);
+            // Service-to-service route: the public /api/v1/inventories/initialize needs a signed-in seller or admin, which this call does not carry.
+            var response = await _httpClient.PostAsJsonAsync(InternalInitializePath, payload, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 var result = await response.Content.ReadFromJsonAsync<InventoryClientResponse>(cancellationToken: cancellationToken);

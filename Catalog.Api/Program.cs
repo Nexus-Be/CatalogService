@@ -22,6 +22,7 @@ builder.WebHost.ConfigureKestrel(options =>
 // 2. Application & Infrastructure Dependency Injection
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
+builder.Services.AddHostedService<Catalog.Api.BackgroundJobs.InventoryInitializationWorker>();
 
 // 3. REST Services
 builder.Services.AddControllers()
