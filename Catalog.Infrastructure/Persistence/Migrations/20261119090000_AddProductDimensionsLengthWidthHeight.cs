@@ -1,11 +1,14 @@
 using System;
+using Catalog.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Catalog.Infrastructure.Persistence.Migrations
 {
-    /// <inheritdoc />
+    [DbContext(typeof(AppDbContext))]
+    [Migration("20261119090000_AddProductDimensionsLengthWidthHeight")]
     public partial class AddProductDimensionsLengthWidthHeight : Migration
     {
         /// <inheritdoc />
