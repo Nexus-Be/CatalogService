@@ -61,5 +61,9 @@ public interface IProductReviewService
     Task<PurchaseRecordDto> SyncPurchaseRecordAsync(
         SyncPurchaseRecordRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<PagedData<ProductReviewDto>> GetAdminReviewsAsync(
+        AdminReviewListQuery query,
+        CancellationToken cancellationToken = default);
 }
 

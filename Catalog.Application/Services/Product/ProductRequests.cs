@@ -13,7 +13,10 @@ public sealed record CreateProductRequest(
     SaleType SaleType = SaleType.Regular,
     List<ProductSpecificationDto>? Specifications = null,
     List<CreateVariantRequest>? Variants = null,
-    int? WeightGrams = null);
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null);
 
 public sealed record CreateAuctionProductRequest(
     Guid CategoryId,
@@ -23,7 +26,10 @@ public sealed record CreateAuctionProductRequest(
     string? SkuCode = null,
     List<ProductSpecificationDto>? Specifications = null,
     Guid? SellerId = null,
-    int? WeightGrams = null);
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null);
 
 public sealed record UpdateProductRequest(
     string Name,
@@ -33,7 +39,10 @@ public sealed record UpdateProductRequest(
     SaleType? SaleType = null,
     string? Status = null,
     List<ProductSpecificationDto>? Specifications = null,
-    int? WeightGrams = null);
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null);
 
 public sealed record ChangeProductStatusRequest(
     string Status,
@@ -61,14 +70,22 @@ public sealed record CreateVariantRequest(
     decimal? Price = null,
     string? Currency = "VND",
     List<CreateVariantAttributeRequest>? Attributes = null,
-    int? WeightGrams = null);
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null);
 
 public sealed record UpdateVariantRequest(
     string Name,
     decimal Price,
     string? Currency = "VND",
     List<CreateVariantAttributeRequest>? Attributes = null,
-    int? WeightGrams = null);
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null);
+
+public sealed record MarkVariantsOrderedRequest(List<Guid> VariantIds);
 
 public sealed record ChangeVariantStatusRequest(
     string Status,

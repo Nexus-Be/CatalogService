@@ -64,7 +64,10 @@ public sealed class ProductService : IProductService
             product.Description,
             product.Brand,
             product.Status.ToString(),
-            product.WeightGrams);
+            product.WeightGrams,
+            product.LengthCm,
+            product.WidthCm,
+            product.HeightCm);
     }
 
     public async Task<PagedData<ProductDto>> ListAsync(int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
@@ -89,7 +92,10 @@ public sealed class ProductService : IProductService
                 product.Description,
                 product.Brand,
                 product.Status.ToString(),
-                product.WeightGrams))
+                product.WeightGrams,
+                product.LengthCm,
+                product.WidthCm,
+                product.HeightCm))
             .ToListAsync(cancellationToken);
 
         return new PagedData<ProductDto>(products, PaginationMetadata.Create(safePage, safePageSize, totalCount));
@@ -203,9 +209,31 @@ public sealed class ProductService : IProductService
 
     public async Task<ProductDetailDto> GetDetailAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var row = await _dbContext.Products
+        return await QueryProductDetailCoreAsync(id, filterActiveOnly: true, cancellationToken);
+    }
+
+    public async Task<ProductDetailDto> GetInternalProductDetailAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        return await QueryProductDetailCoreAsync(id, filterActiveOnly: false, cancellationToken);
+    }
+
+    public async Task<ProductDetailDto> GetAdminProductDetailAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        return await QueryProductDetailCoreAsync(id, filterActiveOnly: false, cancellationToken);
+    }
+
+    private async Task<ProductDetailDto> QueryProductDetailCoreAsync(Guid id, bool filterActiveOnly, CancellationToken cancellationToken)
+    {
+        var query = _dbContext.Products
             .AsNoTracking()
-            .Where(p => p.Id == id && !p.IsDeleted && p.Status == ProductStatus.Active)
+            .Where(p => p.Id == id && !p.IsDeleted);
+
+        if (filterActiveOnly)
+        {
+            query = query.Where(p => p.Status == ProductStatus.Active);
+        }
+
+        var row = await query
             .Select(p => new
             {
                 p.Id,
@@ -217,6 +245,9 @@ public sealed class ProductService : IProductService
                 Status = p.Status.ToString(),
                 p.Specifications,
                 p.WeightGrams,
+                p.LengthCm,
+                p.WidthCm,
+                p.HeightCm,
                 p.PublishedAt,
                 Category = p.Category == null ? null : new ProductDetailCategoryDto(
                     p.Category.Id,
@@ -235,7 +266,10 @@ public sealed class ProductService : IProductService
                         ?? p.Images.Where(i => !i.IsDeleted && i.IsActive).OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault()
                         ?? DefaultImageUrl,
                     p.Images.Where(i => !i.IsDeleted && i.VariantId == v.Id).OrderBy(i => i.SortOrder).Select(i => new ProductImageDto(i.Id, i.ProductId, i.VariantId, i.Url, i.AltText, i.IsActive, i.SortOrder)).ToList(),
-                    v.WeightGrams ?? p.WeightGrams
+                    v.WeightGrams ?? p.WeightGrams,
+                    v.LengthCm ?? p.LengthCm,
+                    v.WidthCm ?? p.WidthCm,
+                    v.HeightCm ?? p.HeightCm
                 )).ToList(),
                 Images = p.Images.Where(i => !i.IsDeleted).OrderBy(i => i.SortOrder).Select(i => new ProductDetailImageDto(
                     i.Id,
@@ -267,7 +301,10 @@ public sealed class ProductService : IProductService
             row.Variants,
             row.Images,
             row.Rating,
-            row.WeightGrams);
+            row.WeightGrams,
+            row.LengthCm,
+            row.WidthCm,
+            row.HeightCm);
     }
 
     private async Task ValidateSellerPermissionAsync(Guid sellerId, CancellationToken cancellationToken)
@@ -317,6 +354,21 @@ public sealed class ProductService : IProductService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WeightGrams must be greater than 0.");
         }
 
+        if (request.LengthCm.HasValue && request.LengthCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "LengthCm must be greater than 0.");
+        }
+
+        if (request.WidthCm.HasValue && request.WidthCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WidthCm must be greater than 0.");
+        }
+
+        if (request.HeightCm.HasValue && request.HeightCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "HeightCm must be greater than 0.");
+        }
+
         var trimmedName = request.Name.Trim();
         if (trimmedName.Length > 255)
         {
@@ -336,6 +388,21 @@ public sealed class ProductService : IProductService
         if (request.WeightGrams.HasValue && request.WeightGrams.Value <= 0)
         {
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WeightGrams must be greater than 0.");
+        }
+
+        if (request.LengthCm.HasValue && request.LengthCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "LengthCm must be greater than 0.");
+        }
+
+        if (request.WidthCm.HasValue && request.WidthCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WidthCm must be greater than 0.");
+        }
+
+        if (request.HeightCm.HasValue && request.HeightCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "HeightCm must be greater than 0.");
         }
 
         var category = await _dbContext.Categories
@@ -370,6 +437,9 @@ public sealed class ProductService : IProductService
             Status = ProductStatus.Draft,
             Specifications = ProductSpecificationHelper.ValidateAndSerialize(request.Specifications),
             WeightGrams = request.WeightGrams,
+            LengthCm = request.LengthCm,
+            WidthCm = request.WidthCm,
+            HeightCm = request.HeightCm,
             CreatedAt = now,
             UpdatedAt = now,
             CreatedBy = request.SellerId,
@@ -414,6 +484,9 @@ public sealed class ProductService : IProductService
                 HasOrder = false,
                 Status = VariantStatus.Active,
                 WeightGrams = request.WeightGrams,
+                LengthCm = request.LengthCm,
+                WidthCm = request.WidthCm,
+                HeightCm = request.HeightCm,
                 CreatedAt = now,
                 UpdatedAt = now,
                 CreatedBy = request.SellerId,
@@ -476,6 +549,21 @@ public sealed class ProductService : IProductService
                     throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"WeightGrams for variant '{v.SkuCode}' must be greater than 0.");
                 }
 
+                if (v.LengthCm.HasValue && v.LengthCm.Value <= 0)
+                {
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"LengthCm for variant '{v.SkuCode}' must be greater than 0.");
+                }
+
+                if (v.WidthCm.HasValue && v.WidthCm.Value <= 0)
+                {
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"WidthCm for variant '{v.SkuCode}' must be greater than 0.");
+                }
+
+                if (v.HeightCm.HasValue && v.HeightCm.Value <= 0)
+                {
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"HeightCm for variant '{v.SkuCode}' must be greater than 0.");
+                }
+
                 var variant = new ProductVariant
                 {
                     Id = Guid.NewGuid(),
@@ -488,6 +576,9 @@ public sealed class ProductService : IProductService
                     HasOrder = false,
                     Status = VariantStatus.Active,
                     WeightGrams = v.WeightGrams ?? request.WeightGrams,
+                    LengthCm = v.LengthCm ?? request.LengthCm,
+                    WidthCm = v.WidthCm ?? request.WidthCm,
+                    HeightCm = v.HeightCm ?? request.HeightCm,
                     CreatedAt = now,
                     UpdatedAt = now,
                     CreatedBy = request.SellerId,
@@ -530,7 +621,10 @@ public sealed class ProductService : IProductService
             product.Description,
             product.Brand,
             product.Status.ToString(),
-            product.WeightGrams);
+            product.WeightGrams,
+            product.LengthCm,
+            product.WidthCm,
+            product.HeightCm);
     }
 
     public async Task<ProductDto> CreateAuctionProductAsync(CreateAuctionProductRequest request, Guid currentUserId, CancellationToken cancellationToken = default)
@@ -555,6 +649,21 @@ public sealed class ProductService : IProductService
         if (request.WeightGrams.HasValue && request.WeightGrams.Value <= 0)
         {
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WeightGrams must be greater than 0.");
+        }
+
+        if (request.LengthCm.HasValue && request.LengthCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "LengthCm must be greater than 0.");
+        }
+
+        if (request.WidthCm.HasValue && request.WidthCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WidthCm must be greater than 0.");
+        }
+
+        if (request.HeightCm.HasValue && request.HeightCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "HeightCm must be greater than 0.");
         }
 
         var trimmedName = request.Name.Trim();
@@ -595,6 +704,9 @@ public sealed class ProductService : IProductService
             Status = ProductStatus.Draft,
             Specifications = ProductSpecificationHelper.ValidateAndSerialize(request.Specifications),
             WeightGrams = request.WeightGrams,
+            LengthCm = request.LengthCm,
+            WidthCm = request.WidthCm,
+            HeightCm = request.HeightCm,
             CreatedAt = now,
             UpdatedAt = now,
             CreatedBy = currentUserId,
@@ -618,6 +730,9 @@ public sealed class ProductService : IProductService
             HasOrder = false,
             Status = VariantStatus.Active,
             WeightGrams = request.WeightGrams,
+            LengthCm = request.LengthCm,
+            WidthCm = request.WidthCm,
+            HeightCm = request.HeightCm,
             CreatedAt = now,
             UpdatedAt = now,
             CreatedBy = currentUserId,
@@ -645,7 +760,10 @@ public sealed class ProductService : IProductService
             product.Description,
             product.Brand,
             product.Status.ToString(),
-            product.WeightGrams);
+            product.WeightGrams,
+            product.LengthCm,
+            product.WidthCm,
+            product.HeightCm);
     }
 
     public async Task<ProductDto> UpdateAsync(Guid id, UpdateProductRequest request, Guid currentUserId, CancellationToken cancellationToken = default)
@@ -724,7 +842,22 @@ public sealed class ProductService : IProductService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Shipping weight must be greater than zero.");
         }
 
-        var oldValues = new { product.Name, product.Description, product.Brand, product.CategoryId, product.SaleType, product.Status, product.WeightGrams };
+        if (request.LengthCm.HasValue && request.LengthCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "LengthCm must be greater than zero.");
+        }
+
+        if (request.WidthCm.HasValue && request.WidthCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WidthCm must be greater than zero.");
+        }
+
+        if (request.HeightCm.HasValue && request.HeightCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "HeightCm must be greater than zero.");
+        }
+
+        var oldValues = new { product.Name, product.Description, product.Brand, product.CategoryId, product.SaleType, product.Status, product.WeightGrams, product.LengthCm, product.WidthCm, product.HeightCm };
 
         product.Name = trimmedName;
         product.Description = request.Description?.Trim();
@@ -756,6 +889,21 @@ public sealed class ProductService : IProductService
             product.WeightGrams = request.WeightGrams.Value;
         }
 
+        if (request.LengthCm.HasValue)
+        {
+            product.LengthCm = request.LengthCm.Value;
+        }
+
+        if (request.WidthCm.HasValue)
+        {
+            product.WidthCm = request.WidthCm.Value;
+        }
+
+        if (request.HeightCm.HasValue)
+        {
+            product.HeightCm = request.HeightCm.Value;
+        }
+
         product.UpdatedAt = DateTimeOffset.UtcNow;
         product.UpdatedBy = currentUserId;
 
@@ -764,7 +912,7 @@ public sealed class ProductService : IProductService
             "Product",
             product.Id.ToString(),
             oldValues: oldValues,
-            newValues: new { product.Name, product.Description, product.Brand, product.CategoryId, product.SaleType, product.Status, product.WeightGrams },
+            newValues: new { product.Name, product.Description, product.Brand, product.CategoryId, product.SaleType, product.Status, product.WeightGrams, product.LengthCm, product.WidthCm, product.HeightCm },
             userId: currentUserId.ToString());
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -777,7 +925,10 @@ public sealed class ProductService : IProductService
             product.Description,
             product.Brand,
             product.Status.ToString(),
-            product.WeightGrams);
+            product.WeightGrams,
+            product.LengthCm,
+            product.WidthCm,
+            product.HeightCm);
     }
 
     public async Task<ProductDto> ChangeStatusAsync(
@@ -975,17 +1126,20 @@ public sealed class ProductService : IProductService
             product.Description,
             product.Brand,
             product.Status.ToString(),
-            product.WeightGrams);
+            product.WeightGrams,
+            product.LengthCm,
+            product.WidthCm,
+            product.HeightCm);
     }
 
-    public async Task<bool> SoftDeleteAsync(Guid id, Guid currentUserId, CancellationToken cancellationToken = default)
+    public async Task<bool> SoftDeleteAsync(Guid id, Guid currentUserId, bool isAdminOrStaff = false, CancellationToken cancellationToken = default)
     {
         var product = await _dbContext.Products
             .Include(p => p.Variants)
             .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, cancellationToken)
             ?? throw new EntityNotFoundException("PRODUCT_NOT_FOUND", "Product", id);
 
-        if (product.SellerId != currentUserId)
+        if (product.SellerId != currentUserId && !isAdminOrStaff)
         {
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to delete this product.", 403);
         }
@@ -1219,6 +1373,48 @@ public sealed class ProductService : IProductService
                 nextImage.UpdatedAt = now;
             }
         }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> DeleteVariantImageAsync(
+        Guid variantId,
+        Guid imageId,
+        Guid currentUserId,
+        CancellationToken cancellationToken = default)
+    {
+        var image = await _dbContext.ProductImages
+            .Include(i => i.Product)
+            .FirstOrDefaultAsync(i => i.Id == imageId && !i.IsDeleted, cancellationToken)
+            ?? throw new EntityNotFoundException("IMAGE_NOT_FOUND", "ProductImage", imageId);
+
+        if (image.Product == null || image.Product.SellerId != currentUserId)
+        {
+            throw new DomainException("PERMISSION_DENIED", "You do not have permission to delete this image.", 403);
+        }
+
+        if (image.VariantId != variantId)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "The specified image does not belong to this variant.");
+        }
+
+        if (image.Product.Status == ProductStatus.InAuction || image.Product.Status == ProductStatus.Auctioned)
+        {
+            throw new BusinessRuleValidationException("PRODUCT_IN_AUCTION", "Cannot delete images of a product that is currently in auction or already auctioned.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        image.IsDeleted = true;
+        image.DeletedAt = now;
+        image.UpdatedAt = now;
+
+        _dbContext.AddAuditLog(
+            AuditAction.ProductUpdate,
+            "ProductImage",
+            image.Id.ToString(),
+            oldValues: new { image.Url, image.VariantId },
+            userId: currentUserId.ToString());
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
@@ -1508,6 +1704,21 @@ public sealed class ProductService : IProductService
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WeightGrams must be greater than 0.");
         }
 
+        if (request.LengthCm.HasValue && request.LengthCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "LengthCm must be greater than 0.");
+        }
+
+        if (request.WidthCm.HasValue && request.WidthCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "WidthCm must be greater than 0.");
+        }
+
+        if (request.HeightCm.HasValue && request.HeightCm.Value <= 0)
+        {
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "HeightCm must be greater than 0.");
+        }
+
         var now = DateTimeOffset.UtcNow;
         var hasActiveDefault = product.Variants.Any(v => !v.IsDeleted && v.IsActive);
 
@@ -1789,6 +2000,7 @@ public sealed class ProductService : IProductService
     public async Task<bool> SoftDeleteVariantAsync(
         Guid variantId,
         Guid currentUserId,
+        bool isAdminOrStaff = false,
         CancellationToken cancellationToken = default)
     {
         var variant = await _dbContext.ProductVariants
@@ -1796,12 +2008,17 @@ public sealed class ProductService : IProductService
             .FirstOrDefaultAsync(v => v.Id == variantId && !v.IsDeleted, cancellationToken)
             ?? throw new EntityNotFoundException("VARIANT_NOT_FOUND", "ProductVariant", variantId);
 
-        if (variant.Product == null || variant.Product.SellerId != currentUserId)
+        if (!isAdminOrStaff && (variant.Product == null || variant.Product.SellerId != currentUserId))
         {
             throw new DomainException("PERMISSION_DENIED", "You do not have permission to delete this variant.", 403);
         }
 
-        if (variant.HasOrder)
+        if (variant.Product != null && (variant.Product.Status == ProductStatus.InAuction || variant.Product.Status == ProductStatus.Auctioned))
+        {
+            throw new BusinessRuleValidationException("PRODUCT_IN_AUCTION", "Cannot delete variants of a product that is currently in auction or already auctioned.");
+        }
+
+        if (!isAdminOrStaff && variant.HasOrder)
         {
             throw new BusinessRuleValidationException("VARIANT_HAS_ORDERS", "Cannot delete a variant that has existing orders. You can set its status to INACTIVE instead.");
         }
@@ -1833,8 +2050,50 @@ public sealed class ProductService : IProductService
             }
         }
 
+        _dbContext.AddAuditLog(
+            AuditAction.ProductDelete,
+            "ProductVariant",
+            variant.Id.ToString(),
+            oldValues: new { variant.SkuCode, variant.ProductId },
+            userId: currentUserId.ToString());
+
         await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    public async Task<MarkOrderedResponse> MarkVariantsOrderedAsync(
+        MarkVariantsOrderedRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request?.VariantIds == null || request.VariantIds.Count == 0)
+        {
+            return new MarkOrderedResponse(0, Array.Empty<Guid>());
+        }
+
+        var distinctIds = request.VariantIds.Distinct().ToList();
+        var variants = await _dbContext.ProductVariants
+            .Where(v => distinctIds.Contains(v.Id))
+            .ToListAsync(cancellationToken);
+
+        var updatedIds = new List<Guid>();
+        var now = DateTimeOffset.UtcNow;
+
+        foreach (var variant in variants)
+        {
+            if (!variant.HasOrder)
+            {
+                variant.HasOrder = true;
+                variant.UpdatedAt = now;
+                updatedIds.Add(variant.Id);
+            }
+        }
+
+        if (updatedIds.Count > 0)
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        return new MarkOrderedResponse(updatedIds.Count, updatedIds);
     }
 
     // -------------------------------------------------------------
@@ -2439,7 +2698,10 @@ public sealed class ProductService : IProductService
             Images: images,
             CreatedAt: product.CreatedAt,
             PublishedAt: product.PublishedAt,
-            WeightGrams: product.WeightGrams ?? variant?.WeightGrams
+            WeightGrams: product.WeightGrams ?? variant?.WeightGrams,
+            LengthCm: product.LengthCm ?? variant?.LengthCm,
+            WidthCm: product.WidthCm ?? variant?.WidthCm,
+            HeightCm: product.HeightCm ?? variant?.HeightCm
         );
     }
 
@@ -2670,6 +2932,13 @@ public sealed class ProductService : IProductService
 
         var action = request.Action.Trim().ToUpperInvariant();
 
+        if (product.Status == ProductStatus.InAuction && (action == "BAN" || action == "SUSPEND" || action == "REJECT"))
+        {
+            throw new BusinessRuleValidationException(
+                "AUCTION_FORCE_CANCEL_REQUIRED",
+                "Product is currently in an active auction. Please force-cancel the auction session in AuctionService first.");
+        }
+
         if (product.Status == ProductStatus.Banned && action != "BAN")
         {
             throw new BusinessRuleValidationException("PRODUCT_ALREADY_BANNED", "This product has already been permanently banned and cannot be re-activated.");
@@ -2886,7 +3155,10 @@ public sealed class ProductService : IProductService
             product.Description,
             product.Brand,
             product.Status.ToString(),
-            product.WeightGrams);
+            product.WeightGrams,
+            product.LengthCm,
+            product.WidthCm,
+            product.HeightCm);
     }
 
     // -------------------------------------------------------------
@@ -3049,7 +3321,10 @@ public sealed class ProductService : IProductService
             product.Description,
             product.Brand,
             product.Status.ToString(),
-            product.WeightGrams);
+            product.WeightGrams,
+            product.LengthCm,
+            product.WidthCm,
+            product.HeightCm);
     }
 
     public async Task<ProductDto> UnlockFromAuctionAsync(
@@ -3116,7 +3391,10 @@ public sealed class ProductService : IProductService
             product.Description,
             product.Brand,
             product.Status.ToString(),
-            product.WeightGrams);
+            product.WeightGrams,
+            product.LengthCm,
+            product.WidthCm,
+            product.HeightCm);
     }
 
     public async Task<ProductDto> MarkAsAuctionedAsync(
@@ -3173,7 +3451,10 @@ public sealed class ProductService : IProductService
             product.Description,
             product.Brand,
             product.Status.ToString(),
-            product.WeightGrams);
+            product.WeightGrams,
+            product.LengthCm,
+            product.WidthCm,
+            product.HeightCm);
     }
 
     public async Task<ProductDto> RevertAuctionedAsync(
@@ -3234,6 +3515,9 @@ public sealed class ProductService : IProductService
             product.Description,
             product.Brand,
             product.Status.ToString(),
-            product.WeightGrams);
+            product.WeightGrams,
+            product.LengthCm,
+            product.WidthCm,
+            product.HeightCm);
     }
 }

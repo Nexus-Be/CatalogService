@@ -22,6 +22,21 @@ public class AdminProductReportsController : ControllerBase
         _reportService = reportService;
     }
 
+    /// <summary>Gets single product report details by ID including reporter, target product, evidence images, and moderation notes (CAT-AdminReportDetail).</summary>
+    [HttpGet("{reportId:guid}")]
+    [RequireRole("admin", "staff")]
+    [ProducesResponseType(typeof(ProductReportDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetReportDetail(
+        [FromRoute] Guid reportId,
+        CancellationToken ct = default)
+    {
+        var result = await _reportService.GetReportDetailAsync(reportId, ct);
+        return Ok(result);
+    }
+
     /// <summary>Lists and searches violation reports for products in moderation queue (CAT-58).</summary>
     [HttpGet]
     [RequireRole("admin", "staff")]

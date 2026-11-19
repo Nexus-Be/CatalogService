@@ -67,4 +67,16 @@ public class InternalVariantsController : ControllerBase
         var response = await _productService.ValidateVariantSwitchAsync(request, ct);
         return Ok(response);
     }
+
+    /// <summary>Marks variants as having orders (HasOrder = true) idempotently when an order is created. Used by CommerceService.</summary>
+    [HttpPost("mark-ordered")]
+    [HttpPost("/api/v1/internal/catalog/skus/mark-ordered")]
+    [ProducesResponseType(typeof(MarkOrderedResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<MarkOrderedResponse>> MarkVariantsOrdered(
+        [FromBody] MarkVariantsOrderedRequest request,
+        CancellationToken ct)
+    {
+        var response = await _productService.MarkVariantsOrderedAsync(request, ct);
+        return Ok(response);
+    }
 }

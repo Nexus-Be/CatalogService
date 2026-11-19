@@ -15,6 +15,9 @@ public class ProductVariant : AuditableEntity<Guid>
     public required VariantStatus Status { get; set; } = VariantStatus.Active;
     public VariantInactiveReason? StatusReason { get; set; }
     public int? WeightGrams { get; set; }
+    public int? LengthCm { get; set; }
+    public int? WidthCm { get; set; }
+    public int? HeightCm { get; set; }
 
     /// <summary>Inventory row in FulfillmentService. A failed call is retried in the background until it is Done or needs attention.</summary>
     public InventoryInitState InventoryInitState { get; set; } = InventoryInitState.NotRequired;

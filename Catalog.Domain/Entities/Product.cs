@@ -15,6 +15,9 @@ public class Product : AuditableEntity<Guid>
     public ProductInactiveReason? StatusReason { get; set; }
     public string? Specifications { get; set; }
     public int? WeightGrams { get; set; }
+    public int? LengthCm { get; set; }
+    public int? WidthCm { get; set; }
+    public int? HeightCm { get; set; }
     public DateTimeOffset? PublishedAt { get; set; }
 
     // Navigation

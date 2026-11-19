@@ -692,6 +692,68 @@ public sealed class ProductReviewService : IProductReviewService
             purchase.CreatedAt);
     }
 
+    public async Task<PagedData<ProductReviewDto>> GetAdminReviewsAsync(
+        AdminReviewListQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        var safePage = query.Page < 1 ? 1 : query.Page;
+        var safePageSize = query.PageSize < 1 ? 20 : (query.PageSize > 100 ? 100 : query.PageSize);
+
+        var q = _dbContext.ProductReviews
+            .AsNoTracking()
+            .Where(r => !r.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(query.Status) && Enum.TryParse<ReviewStatus>(query.Status, true, out var statusEnum))
+        {
+            q = q.Where(r => r.Status == statusEnum);
+        }
+
+        if (query.Rating.HasValue && query.Rating.Value >= 1 && query.Rating.Value <= 5)
+        {
+            q = q.Where(r => r.Rating == query.Rating.Value);
+        }
+
+        if (query.ProductId.HasValue && query.ProductId.Value != Guid.Empty)
+        {
+            q = q.Where(r => r.ProductId == query.ProductId.Value);
+        }
+
+        if (query.BuyerId.HasValue && query.BuyerId.Value != Guid.Empty)
+        {
+            q = q.Where(r => r.BuyerId == query.BuyerId.Value);
+        }
+
+        var totalCount = await q.CountAsync(cancellationToken);
+
+        var isAsc = string.Equals(query.SortDirection, "asc", StringComparison.OrdinalIgnoreCase);
+        q = (query.SortBy?.ToLowerInvariant()) switch
+        {
+            "rating" => isAsc ? q.OrderBy(r => r.Rating).ThenByDescending(r => r.CreatedAt) : q.OrderByDescending(r => r.Rating).ThenByDescending(r => r.CreatedAt),
+            _ => isAsc ? q.OrderBy(r => r.CreatedAt) : q.OrderByDescending(r => r.CreatedAt)
+        };
+
+        var rows = await q
+            .Skip((safePage - 1) * safePageSize)
+            .Take(safePageSize)
+            .ToListAsync(cancellationToken);
+
+        var items = rows.Select(r => new ProductReviewDto(
+            r.Id,
+            r.ProductId,
+            r.BuyerId,
+            r.Rating,
+            r.Comment,
+            DeserializeImages(r.ReviewImages),
+            r.Status.ToString(),
+            r.CreatedAt,
+            r.UpdatedAt
+        )).ToList();
+
+        return new PagedData<ProductReviewDto>(
+            items,
+            PaginationMetadata.Create(safePage, safePageSize, totalCount));
+    }
+
     private static List<string>? DeserializeImages(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))

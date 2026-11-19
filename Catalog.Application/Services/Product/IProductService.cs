@@ -14,11 +14,13 @@ public interface IProductService
     Task<PagedData<ProductDto>> ListAsync(int page = 1, int pageSize = 20, CancellationToken cancellationToken = default);
     Task<PagedData<ProductListItemDto>> SearchAsync(ProductListQuery query, CancellationToken cancellationToken = default);
     Task<ProductDetailDto> GetDetailAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<ProductDetailDto> GetInternalProductDetailAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<ProductDetailDto> GetAdminProductDetailAsync(Guid id, CancellationToken cancellationToken = default);
     Task<ProductDto> CreateAsync(CreateProductRequest request, CancellationToken cancellationToken = default);
     Task<ProductDto> CreateAuctionProductAsync(CreateAuctionProductRequest request, Guid currentUserId, CancellationToken cancellationToken = default);
     Task<ProductDto> UpdateAsync(Guid id, UpdateProductRequest request, Guid currentUserId, CancellationToken cancellationToken = default);
     Task<ProductDto> ChangeStatusAsync(Guid id, ChangeProductStatusRequest request, Guid currentUserId, bool isAdminOrStaff = false, CancellationToken cancellationToken = default);
-    Task<bool> SoftDeleteAsync(Guid id, Guid currentUserId, CancellationToken cancellationToken = default);
+    Task<bool> SoftDeleteAsync(Guid id, Guid currentUserId, bool isAdminOrStaff = false, CancellationToken cancellationToken = default);
 
     // Image Management (CAT-12, CAT-13, CAT-14, CAT-40)
     Task<ProductImageDto> AddProductImageAsync(
@@ -97,6 +99,13 @@ public interface IProductService
     Task<bool> SoftDeleteVariantAsync(
         Guid variantId,
         Guid currentUserId,
+        bool isAdminOrStaff = false,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> DeleteVariantImageAsync(
+        Guid variantId,
+        Guid imageId,
+        Guid currentUserId,
         CancellationToken cancellationToken = default);
 
     // Seller APIs (CAT-44, CAT-45)
@@ -121,6 +130,10 @@ public interface IProductService
 
     Task<ValidateVariantSwitchResponse> ValidateVariantSwitchAsync(
         ValidateVariantSwitchRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<MarkOrderedResponse> MarkVariantsOrderedAsync(
+        MarkVariantsOrderedRequest request,
         CancellationToken cancellationToken = default);
 
     // Dedicated Auction APIs (CAT-46, CAT-47, CAT-48, CAT-49)

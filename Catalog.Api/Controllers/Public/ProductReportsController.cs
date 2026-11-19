@@ -113,4 +113,21 @@ public class ProductReportsController : ControllerBase
             }
         }
     }
+
+    /// <summary>Gets all violation reports submitted by the authenticated user (CAT-MyReports).</summary>
+    [HttpGet("/api/v1/products/reports/mine")]
+    [RequireRole("buyer", "seller")]
+    [ProducesResponseType(typeof(IReadOnlyList<ProductReportDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetMyReports(CancellationToken ct)
+    {
+        if (!this.TryGetUserId(out var userId, out var errorResult))
+        {
+            return errorResult;
+        }
+
+        var result = await _reportService.GetMyReportsAsync(userId, ct);
+        return Ok(result);
+    }
 }

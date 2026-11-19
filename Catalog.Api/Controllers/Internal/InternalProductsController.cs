@@ -19,6 +19,19 @@ public class InternalProductsController : ControllerBase
         _productService = productService;
     }
 
+    /// <summary>Lấy chi tiết sản phẩm dành cho internal service (AuctionService, OrderService, FulfillmentService) - bỏ qua filter trạng thái.</summary>
+    [HttpGet("{id:guid}")]
+    [HttpGet("/api/v1/internal/catalog/products/{id:guid}")]
+    [ProducesResponseType(typeof(ProductDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ProductDetailDto>> GetInternalProductDetail(
+        [FromRoute] Guid id,
+        CancellationToken ct)
+    {
+        var result = await _productService.GetInternalProductDetailAsync(id, ct);
+        return Ok(result);
+    }
+
     /// <summary>Kiểm tra tiền điều kiện sản phẩm trước khi tạo/mở phiên đấu giá.</summary>
     [HttpGet("{id:guid}/auction-eligibility")]
     [ProducesResponseType(typeof(AuctionEligibilityResponse), StatusCodes.Status200OK)]
