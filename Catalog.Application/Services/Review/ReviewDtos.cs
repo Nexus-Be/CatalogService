@@ -63,3 +63,14 @@ public sealed record PurchaseRecordDto(
     DateTimeOffset CreatedAt
 );
 
+public sealed record AdminReviewListQuery(
+    int Page = 1,
+    int PageSize = 20,
+    string? Status = null,
+    short? Rating = null,
+    Guid? ProductId = null,
+    Guid? BuyerId = null,
+    string? SortBy = "createdAt",
+    string? SortDirection = "desc"
+);
+

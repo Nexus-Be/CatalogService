@@ -36,7 +36,7 @@ public class VariantsController : ControllerBase
 
     /// <summary>Updates a product variant's information (CAT-08).</summary>
     [HttpPut("{id:guid}")]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller")]
     [ProducesResponseType(typeof(VariantDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -57,7 +57,7 @@ public class VariantsController : ControllerBase
 
     /// <summary>Updates a product variant's information via partial patch (CAT-08).</summary>
     [HttpPatch("{id:guid}")]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller")]
     [ProducesResponseType(typeof(VariantDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -70,7 +70,7 @@ public class VariantsController : ControllerBase
 
     /// <summary>Changes a variant's status (ACTIVE or INACTIVE with reason) (CAT-09).</summary>
     [HttpPatch("{id:guid}/status")]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller")]
     [ProducesResponseType(typeof(VariantDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -105,7 +105,10 @@ public class VariantsController : ControllerBase
             return errorResult;
         }
 
-        await _productService.SoftDeleteVariantAsync(id, currentUserId, ct);
+        var userRoles = this.GetUserRoles();
+        var isAdminOrStaff = userRoles.Any(r => r.Equals("admin", StringComparison.OrdinalIgnoreCase) || r.Equals("staff", StringComparison.OrdinalIgnoreCase));
+
+        await _productService.SoftDeleteVariantAsync(id, currentUserId, isAdminOrStaff, ct);
         return NoContent();
     }
 
@@ -187,7 +190,7 @@ public class VariantsController : ControllerBase
             return errorResult;
         }
 
-        await _productService.DeleteImageByIdAsync(imageId, currentUserId, ct);
+        await _productService.DeleteVariantImageAsync(id, imageId, currentUserId, ct);
         return NoContent();
     }
 }

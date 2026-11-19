@@ -14,6 +14,9 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.Property(x => x.Brand).HasMaxLength(150);
         builder.Property(x => x.Specifications).HasColumnType("jsonb");
         builder.Property(x => x.WeightGrams).IsRequired(false);
+        builder.Property(x => x.LengthCm).IsRequired(false);
+        builder.Property(x => x.WidthCm).IsRequired(false);
+        builder.Property(x => x.HeightCm).IsRequired(false);
 
         builder.HasOne(p => p.Category)
             .WithMany(c => c.Products)

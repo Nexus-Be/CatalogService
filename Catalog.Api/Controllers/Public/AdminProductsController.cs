@@ -23,6 +23,21 @@ public class AdminProductsController : ControllerBase
         _productService = productService;
     }
 
+    /// <summary>Gets complete product details including inactive variants, audit reasons, and reports for admin/staff moderation (CAT-AdminDetail).</summary>
+    [HttpGet("{id:guid}")]
+    [RequireRole("admin", "staff")]
+    [ProducesResponseType(typeof(ProductDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAdminProductDetail(
+        [FromRoute] Guid id,
+        CancellationToken ct)
+    {
+        var result = await _productService.GetAdminProductDetailAsync(id, ct);
+        return Ok(result);
+    }
+
     /// <summary>Lists and searches all products across the entire platform for admin and staff oversight (CAT-50).</summary>
     [HttpGet]
     [RequireRole("admin", "staff")]

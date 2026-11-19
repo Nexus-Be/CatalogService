@@ -11,10 +11,13 @@ public sealed record ProductDto(
     string? Description,
     string? Brand,
     string Status,
-    int? WeightGrams = null)
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null)
 {
     public ProductDto(Guid id, Guid sellerId, Guid categoryId, string name, string? description, string? brand, string status)
-        : this(id, sellerId, categoryId, name, description, brand, status, null) { }
+        : this(id, sellerId, categoryId, name, description, brand, status, null, null, null, null) { }
 }
 
 public sealed record ProductListItemDto(
@@ -42,7 +45,10 @@ public sealed record ProductDetailVariantDto(
     IReadOnlyList<ProductVariantAttributeDto> Attributes,
     string? PrimaryImageUrl = null,
     IReadOnlyList<ProductImageDto>? Images = null,
-    int? WeightGrams = null)
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null)
 {
     public ProductDetailVariantDto(
         Guid variantId,
@@ -54,7 +60,7 @@ public sealed record ProductDetailVariantDto(
         IReadOnlyList<ProductVariantAttributeDto> attributes,
         string? primaryImageUrl,
         IReadOnlyList<ProductImageDto>? images)
-        : this(variantId, skuCode, name, price, status, isActive, attributes, primaryImageUrl, images, null) { }
+        : this(variantId, skuCode, name, price, status, isActive, attributes, primaryImageUrl, images, null, null, null, null) { }
 }
 
 public sealed record ProductDetailImageDto(
@@ -89,7 +95,10 @@ public sealed record ProductDetailDto(
     IReadOnlyList<ProductDetailVariantDto> Variants,
     IReadOnlyList<ProductDetailImageDto> Images,
     ProductDetailRatingDto Rating,
-    int? WeightGrams = null)
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null)
 {
     public ProductDetailDto(
         Guid productId,
@@ -105,7 +114,7 @@ public sealed record ProductDetailDto(
         IReadOnlyList<ProductDetailVariantDto> variants,
         IReadOnlyList<ProductDetailImageDto> images,
         ProductDetailRatingDto rating)
-        : this(productId, sellerId, name, description, brand, saleType, status, specifications, publishedAt, category, variants, images, rating, null) { }
+        : this(productId, sellerId, name, description, brand, saleType, status, specifications, publishedAt, category, variants, images, rating, null, null, null, null) { }
 }
 
 public sealed record ProductImageDto(
@@ -134,7 +143,10 @@ public sealed record VariantDetailDto(
     IReadOnlyList<ProductVariantAttributeDto> Attributes,
     string? PrimaryImageUrl = null,
     IReadOnlyList<ProductImageDto>? Images = null,
-    int? WeightGrams = null);
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null);
 
 public sealed record SellerProductListItemDto(
     Guid ProductId,
@@ -166,7 +178,10 @@ public sealed record SellerProductVariantDto(
     IReadOnlyList<ProductVariantAttributeDto> Attributes,
     IReadOnlyList<ProductImageDto> Images,
     int? WeightGrams = null,
-    string InventoryInitState = "NotRequired");
+    string InventoryInitState = "NotRequired",
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null);
 
 public sealed record SellerProductDetailDto(
     Guid ProductId,
@@ -187,7 +202,10 @@ public sealed record SellerProductDetailDto(
     IReadOnlyList<ProductImageDto> Images,
     IReadOnlyList<SellerProductVariantDto> Variants,
     int? WeightGrams = null,
-    string? RejectionReason = null);
+    string? RejectionReason = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null);
 
 public sealed record BatchVariantItemDto(
     Guid VariantId,
@@ -204,7 +222,10 @@ public sealed record BatchVariantItemDto(
     string? PrimaryImageUrl,
     IReadOnlyList<ProductVariantAttributeDto> Attributes,
     bool IsPurchasable,
-    int? WeightGrams = null);
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null);
 
 public sealed record BatchVariantResponse(
     IReadOnlyList<BatchVariantItemDto> Items,
@@ -221,7 +242,11 @@ public sealed record VariantStatusItemDto(
     bool IsPurchasable,
     string Reason,
     decimal? Price,
-    string Currency);
+    string Currency,
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null);
 
 public sealed record CheckVariantStatusResponse(
     IReadOnlyList<VariantStatusItemDto> Items,
@@ -235,7 +260,10 @@ public sealed record ValidateVariantSwitchResponse(
     string NewSkuName,
     decimal NewUnitPrice,
     bool IsPurchasable,
-    int? WeightGrams = null);
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null);
 
 public sealed record AdminProductListItemDto(
     Guid ProductId,

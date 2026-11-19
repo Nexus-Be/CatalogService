@@ -97,7 +97,7 @@ public class ProductsController : ControllerBase
 
     /// <summary>Creates a new regular product in Draft status (CAT-01). Can include initial variants.</summary>
     [HttpPost]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -157,7 +157,7 @@ public class ProductsController : ControllerBase
 
     /// <summary>Creates a new auction product in Draft status (CAT-43). Does not require variant price.</summary>
     [HttpPost("auction")]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -180,7 +180,7 @@ public class ProductsController : ControllerBase
 
     /// <summary>Updates auction product status (CAT-49). Locks permanently when transition to Auctioned.</summary>
     [HttpPatch("auctions/{id:guid}/status")]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -207,7 +207,7 @@ public class ProductsController : ControllerBase
 
     /// <summary>Updates product general details (CAT-02).</summary>
     [HttpPut("{id:guid}")]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -225,7 +225,7 @@ public class ProductsController : ControllerBase
 
     /// <summary>Updates product general details via partial patch (CAT-02).</summary>
     [HttpPatch("{id:guid}")]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -267,7 +267,10 @@ public class ProductsController : ControllerBase
             return errorResult;
         }
 
-        await _productService.SoftDeleteAsync(id, currentUserId, ct);
+        var userRoles = this.GetUserRoles();
+        var isAdminOrStaff = userRoles.Any(r => r.Equals("admin", StringComparison.OrdinalIgnoreCase) || r.Equals("staff", StringComparison.OrdinalIgnoreCase));
+
+        await _productService.SoftDeleteAsync(id, currentUserId, isAdminOrStaff, ct);
         return NoContent();
     }
 
@@ -287,7 +290,7 @@ public class ProductsController : ControllerBase
 
     /// <summary>Uploads an image for a product via Cloudinary (CAT-12). Max 5MB, format .jpg/.jpeg/.png/.webp.</summary>
     [HttpPost("{id:guid}/images")]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller")]
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(ProductImageDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -338,7 +341,7 @@ public class ProductsController : ControllerBase
 
     /// <summary>Deletes an image from a product (CAT-13 sub-route).</summary>
     [HttpDelete("{id:guid}/images/{imageId:guid}")]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -362,7 +365,7 @@ public class ProductsController : ControllerBase
 
     /// <summary>Adds a new variant/SKU to a product (CAT-07). Max 10 variants allowed.</summary>
     [HttpPost("{id:guid}/variants")]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller")]
     [ProducesResponseType(typeof(VariantDetailDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -382,7 +385,7 @@ public class ProductsController : ControllerBase
 
     /// <summary>Sets a variant as the default variant for the product (CAT-10).</summary>
     [HttpPut("{id:guid}/default-variant")]
-    [RequireRole("seller", "admin")]
+    [RequireRole("seller")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

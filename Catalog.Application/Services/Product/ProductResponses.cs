@@ -16,3 +16,7 @@ public sealed record ReserveStockResponse(
     Guid ProductId,
     int ReservedQuantity,
     string? Reason = null);
+
+public sealed record MarkOrderedResponse(
+    int UpdatedCount,
+    System.Collections.Generic.IReadOnlyList<Guid> UpdatedVariantIds);

@@ -24,4 +24,12 @@ public interface IProductReportService
         ModerateProductReportRequest request,
         Guid adminId,
         CancellationToken cancellationToken = default);
+
+    Task<ProductReportDto> GetReportDetailAsync(
+        Guid reportId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ProductReportDto>> GetMyReportsAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
 }

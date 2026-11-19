@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Catalog.Api.Extensions;
 using Catalog.Api.Filters;
+using Catalog.Application.Common.Models;
 using Catalog.Application.Services.Review;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +20,20 @@ public class AdminReviewsController : ControllerBase
     public AdminReviewsController(IProductReviewService reviewService)
     {
         _reviewService = reviewService;
+    }
+
+    /// <summary>Lists all reviews with filtering by product, user, status (VISIBLE, HIDDEN), rating, and date range for admin/staff moderation (CAT-AdminReviews).</summary>
+    [HttpGet]
+    [RequireRole("admin", "staff")]
+    [ProducesResponseType(typeof(PagedData<ProductReviewDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetAdminReviews(
+        [FromQuery] AdminReviewListQuery query,
+        CancellationToken ct)
+    {
+        var result = await _reviewService.GetAdminReviewsAsync(query, ct);
+        return Ok(result);
     }
 
     /// <summary>Moderates a product review (HIDE or PUBLISH) (CAT-65).</summary>

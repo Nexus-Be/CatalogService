@@ -30,7 +30,10 @@ public sealed record AuctionProductDetailDto(
     IReadOnlyList<ProductImageDto> Images,
     DateTimeOffset CreatedAt,
     DateTimeOffset? PublishedAt,
-    int? WeightGrams = null);
+    int? WeightGrams = null,
+    int? LengthCm = null,
+    int? WidthCm = null,
+    int? HeightCm = null);
 
 public sealed record AuctionListQuery(
     int Page = 1,

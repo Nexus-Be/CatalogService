@@ -411,6 +411,31 @@ public sealed class ProductReportService : IProductReportService
         return MapToDto(report);
     }
 
+    public async Task<ProductReportDto> GetReportDetailAsync(
+        Guid reportId,
+        CancellationToken cancellationToken = default)
+    {
+        var report = await _dbContext.ProductReports
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == reportId && !r.IsDeleted, cancellationToken)
+            ?? throw new EntityNotFoundException("REPORT_NOT_FOUND", "ProductReport", reportId);
+
+        return MapToDto(report);
+    }
+
+    public async Task<IReadOnlyList<ProductReportDto>> GetMyReportsAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var reports = await _dbContext.ProductReports
+            .AsNoTracking()
+            .Where(r => r.ReporterId == userId && !r.IsDeleted)
+            .OrderByDescending(r => r.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        return reports.Select(MapToDto).ToList();
+    }
+
     private static ProductReportDto MapToDto(ProductReport report)
     {
         return new ProductReportDto(
