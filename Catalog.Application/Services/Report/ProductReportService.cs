@@ -259,6 +259,13 @@ public sealed class ProductReportService : IProductReportService
 
         if (action == "BAN_PRODUCT")
         {
+            if (report.Product != null && report.Product.Status == ProductStatus.InAuction)
+            {
+                throw new BusinessRuleValidationException(
+                    "AUCTION_FORCE_CANCEL_REQUIRED",
+                    "Product is currently in an active auction. Please force-cancel the auction session in AuctionService first.");
+            }
+
             report.Status = ReportStatus.Resolved;
             report.ReviewedBy = adminId;
             report.ReviewedAt = now;
