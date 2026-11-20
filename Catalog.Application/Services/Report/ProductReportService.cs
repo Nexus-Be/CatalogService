@@ -400,7 +400,7 @@ public sealed class ProductReportService : IProductReportService
                     report.ReporterId,
                     "Đơn tố cáo sản phẩm đã được xử lý thành công",
                     $"Cảm ơn bạn đã hỗ trợ bảo vệ cộng đồng. Đơn tố cáo sản phẩm '{productName}' của bạn đã được Quản trị viên xác minh chính xác và xử lý nghiêm khắc.",
-                    "REPORT_RESOLVED",
+                    "ProductReportResolved",
                     $"{{\"reportId\":\"{report.Id}\",\"productId\":\"{report.ProductId}\",\"resolution\":\"Resolved\"}}",
                     cancellationToken);
             }
