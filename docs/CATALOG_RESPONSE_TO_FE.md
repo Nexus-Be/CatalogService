@@ -58,6 +58,7 @@ Chào team Frontend, Catalog Backend đã đọc kỹ toàn bộ file yêu cầu
     - **Seller Role**: Có toàn quyền tạo (`POST`), chỉnh sửa thông tin (`PUT/PATCH`), thêm variant, upload/xóa ảnh sản phẩm của chính mình.
     - **Admin/Staff Role**: Có quyền duyệt duyệt/từ chối (`APPROVE`, `REJECT`), tạm khóa (`SUSPEND`), mở khóa (`UNLOCK`), cấm vĩnh viễn (`BAN`) thông qua `/api/v1/admin/products/{id}/moderate`, xóa cưỡng chế (`DELETE /api/v1/products/{id}`), và xem chi tiết quản trị (`GET /api/v1/admin/products/{id}`).
   - **Điều chỉnh code**: Các API chỉnh sửa nội dung (`PUT /api/v1/products/{id}`, `POST /api/v1/products/{id}/variants`, `DELETE /api/v1/products/{id}/images/{imageId}`) đã được thắt chặt chỉ cho phép `[RequireRole("seller")]`.
+  - **Ngoại lệ hiện có trong code (cập nhật 20/11/2026):** hai route ảnh (`PATCH /api/v1/images/{id}` và `DELETE /api/v1/images/{id}`) và `DELETE /api/v1/variants/{id}` vẫn cho phép thêm `admin` (xóa cưỡng chế sản phẩm `DELETE /api/v1/products/{id}` cũng cho `admin`, như mô tả ở trên). Chưa siết thêm; nếu nhóm muốn bỏ ngoại lệ này cần sửa code riêng.
 
 #### 4. Quy trình Cấm/Khóa Sản phẩm đang trong Phiên Đấu giá (`InAuction`) (P0 - Ý 4)
 - **Vấn đề đặt ra**: Nếu sản phẩm đang mở phiên đấu giá (`Status = InAuction`) mà vi phạm nghiêm trọng (hàng giả, lừa đảo), Admin có bấm BAN ngay trong Catalog được không?
@@ -74,7 +75,7 @@ Chào team Frontend, Catalog Backend đã đọc kỹ toàn bộ file yêu cầu
       ```
     - **Luồng thao tác chuẩn cho Admin trên Frontend**:
       1. Bước 1: Admin vào màn hình Quản lý Đấu giá, nhấn nút **"Hủy phiên khẩn cấp" (Force Cancel Auction)** tại `AuctionService`.
-      2. Bước 2: `AuctionService` sẽ giải phóng cọc/hoàn tiền cho các bidder qua `WalletService`, đồng thời tự động gọi API nội bộ của Catalog: `POST /api/v1/internal/catalog/products/{id}/unlock-auction` để đưa sản phẩm về trạng thái an toàn.
+      2. Bước 2: `AuctionService` sẽ giải phóng cọc/hoàn tiền cho các bidder qua `WalletService`, đồng thời tự động gọi API nội bộ của Catalog: `POST /api/v1/internal/products/{id}/unlock-auction` để đưa sản phẩm về trạng thái an toàn.
       3. Bước 3: Admin thực hiện **BAN** hoặc **SUSPEND** sản phẩm trên giao diện Catalog. Lúc này CatalogService ghi nhận BAN thành công và tự động đóng các đơn tố cáo vi phạm liên quan.
 
 #### 5. Sửa lỗi IDOR khi Xóa Ảnh Biến thể (P0 - Ý 5)
@@ -100,23 +101,22 @@ Chào team Frontend, Catalog Backend đã đọc kỹ toàn bộ file yêu cầu
   - Trả về kích thước và khối lượng vận chuyển đầy đủ.
 
 #### 7. Màn hình Quản trị Đánh giá Sản phẩm (P1 - Ý 7)
-- **Endpoint mới**: `GET /api/v1/admin/reviews`
+- **Endpoint**: `GET /api/v1/admin/reviews`
 - **Quyền**: `[RequireRole("admin", "staff")]`
 - **Query Params hỗ trợ lọc**:
   - `page` (default 1), `pageSize` (default 20, max 100)
-  - `status`: `VISIBLE` hoặc `HIDDEN`
+  - `status`: `Published` hoặc `Hidden` (giá trị khác không khớp enum và bị bỏ qua)
   - `rating`: Lọc theo số sao từ 1 đến 5
   - `productId`: Xem toàn bộ đánh giá của 1 sản phẩm cụ thể
-  - `userId`: Xem toàn bộ đánh giá do 1 user cụ thể viết
-  - `hasImages`: `true`/`false` (lọc các đánh giá có ảnh)
-  - `fromDate`, `toDate`: Lọc theo khoảng thời gian
+  - `buyerId`: Xem toàn bộ đánh giá do 1 người mua cụ thể viết
+  - **Chưa hỗ trợ (cập nhật 20/11/2026):** `userId`, `hasImages`, `fromDate`, `toDate`. Các tham số này bị bỏ qua, không gây lỗi. Sẽ bổ sung khi FE cần.
   - `sortBy`: `createdAt` hoặc `rating`, `sortDirection`: `asc` hoặc `desc`
 - **Kết hợp với API Action sẵn có**: `PATCH /api/v1/admin/reviews/{id}/moderate` (Action: `HIDE` hoặc `PUBLISH`) để ẩn đánh giá xấu độc hoặc khôi phục đánh giá.
 
 #### 8. Chi tiết Báo cáo Vi phạm & Danh sách Tố cáo của Tôi (P1 - Ý 8)
 - **Endpoint 1 (Admin chi tiết tố cáo)**: `GET /api/v1/admin/reports/products/{reportId:guid}`
   - Quyền: `[RequireRole("admin", "staff")]`
-  - Trả về: Chi tiết đơn tố cáo, lý do vi phạm, mô tả của người mua, danh sách ảnh bằng chứng (`EvidenceImageUrls`), thông tin sản phẩm bị tố cáo, và ghi chú xử lý của kiểm duyệt viên.
+  - Trả về: Chi tiết đơn tố cáo, lý do vi phạm, mô tả của người mua, danh sách ảnh bằng chứng (trường `EvidenceImages`), thông tin sản phẩm bị tố cáo, và ghi chú xử lý của kiểm duyệt viên.
 - **Endpoint 2 (User xem lịch sử tố cáo)**: `GET /api/v1/products/reports/mine`
   - Quyền: `[RequireRole("buyer", "seller")]`
   - Trả về: Danh sách các báo cáo vi phạm mà chính tài khoản đang đăng nhập đã gửi lên hệ thống, kèm trạng thái xử lý (`Pending`, `Investigating`, `Resolved`, `Dismissed`) và ghi chú phản hồi từ ban quản trị.
@@ -169,6 +169,14 @@ Chào team Frontend, Catalog Backend đã đọc kỹ toàn bộ file yêu cầu
    - Hiển thị thông báo (Modal/Popup): *"Sản phẩm đang nằm trong phiên đấu giá trực tiếp. Vui lòng chuyển sang màn hình Quản lý Đấu giá và bấm 'Hủy phiên đấu giá khẩn cấp' trước khi khóa sản phẩm."*
    - Cung cấp nút chuyển hướng nhanh sang phiên đấu giá tương ứng tại module Auction.
 3. Sau khi phiên đấu giá đã được hủy khẩn cấp, Admin quay lại Catalog và nhấn **BAN** thành công.
+
+### C. Bổ sung theo code hiện tại (cập nhật 20/11/2026)
+
+1. **Trạng thái sản phẩm:** `Draft`, `Active`, `Inactive`, `Auctioned`, `InAuction`, `Banned`, `PendingApproval`. Sản phẩm `Auctioned` bị khóa vĩnh viễn, không kiểm duyệt được (`PRODUCT_ALREADY_AUCTIONED`). Sản phẩm `Banned` không kích hoạt lại được (`PRODUCT_ALREADY_BANNED`).
+2. **Báo cáo vi phạm sản phẩm:** `POST /api/v1/products/{id}/reports` dùng `multipart/form-data` (`reason`, `description`, `evidenceFiles`, bắt buộc ít nhất 1 ảnh). Admin xem danh sách ở `GET /api/v1/admin/reports/products` và xử lý ở `PUT /api/v1/admin/reports/products/{id}/action` (`BAN_PRODUCT`, `DISMISS`, `INVESTIGATE`, ghi chú 5 đến 2000 ký tự). Mã lỗi thường gặp: `DUPLICATE_REPORT`.
+3. **Hệ quả của `BAN_PRODUCT`:** biến thể chuyển `Inactive`, các báo cáo khác cùng sản phẩm tự đóng, seller bị trừ điểm uy tín (số điểm thật do User trả về) và nhận thông báo `ProductBannedByReport`. **Không cấm được sản phẩm đang `InAuction` bằng đường báo cáo** (cùng mã lỗi `AUCTION_FORCE_CANCEL_REQUIRED` như route `moderate`).
+4. **Đánh giá:** tạo và sửa đánh giá dùng `multipart/form-data` (có `reviewImages`). Tham số `orderId` thực chất là **ID sub-order**. `GET .../reviews/eligibility` cần `?orderId=`. Trạng thái đánh giá: `Published`, `Hidden`.
+5. **Chưa có trang API chi tiết trong `docs/api/`** cho `GET /products/reports/mine`, `POST /internal/variants/mark-ordered` và `GET /admin/products/{id}`.
 
 ---
 *Mọi thắc mắc kỹ thuật hoặc yêu cầu test thử nghiệm trên môi trường Dev, xin vui lòng liên hệ Backend Catalog Team qua kênh phối hợp kỹ thuật nội bộ.*
