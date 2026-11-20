@@ -1,4 +1,4 @@
-namespace Catalog.Application.Services.Report;
+﻿namespace Catalog.Application.Services.Report;
 
 using System;
 using System.Collections.Generic;
@@ -359,10 +359,12 @@ public sealed class ProductReportService : IProductReportService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        // Deduct 10 reputation points from Seller when Product is banned due to violations (P2-06)
+        // Deduct reputation points from the seller when the product is banned due to violations (P2-06). User decides how many points are
+        // really deducted, so the notice below states that figure and never the number that was asked for.
+        int? appliedPenaltyPoints = null;
         if (action == "BAN_PRODUCT" && report.Product != null && report.Product.SellerId != Guid.Empty)
         {
-            await _userClient.PenalizeSellerAsync(
+            appliedPenaltyPoints = await _userClient.PenalizeSellerForReportAsync(
                 report.Product.SellerId,
                 penaltyPoints: 10,
                 reason: "PRODUCT_BANNED_SELLER",
@@ -379,12 +381,15 @@ public sealed class ProductReportService : IProductReportService
             // 1. Notify Seller of ban and reputation penalty
             if (report.Product != null && report.Product.SellerId != Guid.Empty)
             {
+                var penaltyText = appliedPenaltyPoints is > 0
+                    ? $" Tài khoản Shop bị trừ {appliedPenaltyPoints} điểm uy tín."
+                    : string.Empty;
                 await _notificationClient.SendInAppNotificationAsync(
                     report.Product.SellerId,
                     "CẢNH BÁO: Sản phẩm bị cấm do đơn tố cáo vi phạm",
-                    $"Sản phẩm '{productName}' đã bị gỡ vĩnh viễn sau khi Quản trị viên xác minh đơn tố cáo vi phạm. Tài khoản Shop bị trừ 10 điểm uy tín. Phán quyết: {note}.",
-                    "PRODUCT_BANNED_REPORT",
-                    $"{{\"productId\":\"{report.ProductId}\",\"reportId\":\"{report.Id}\",\"penaltyPoints\":10}}",
+                    $"Sản phẩm '{productName}' đã bị gỡ vĩnh viễn sau khi Quản trị viên xác minh đơn tố cáo vi phạm.{penaltyText} Phán quyết: {note}.",
+                    "ProductBannedByReport",
+                    $"{{\"productId\":\"{report.ProductId}\",\"reportId\":\"{report.Id}\",\"penaltyPoints\":{appliedPenaltyPoints ?? 0}}}",
                     cancellationToken);
             }
 
