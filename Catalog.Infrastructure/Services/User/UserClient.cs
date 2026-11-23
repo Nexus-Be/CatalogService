@@ -1,4 +1,4 @@
-namespace Catalog.Infrastructure.Services.User;
+﻿namespace Catalog.Infrastructure.Services.User;
 
 using System;
 using System.Net.Http;
@@ -68,11 +68,19 @@ public sealed class UserClient : IUserClient
         int penaltyPoints,
         string reason,
         Guid referenceId,
+        CancellationToken cancellationToken = default) =>
+        await PenalizeSellerForReportAsync(sellerId, penaltyPoints, reason, referenceId, cancellationToken) is not null;
+
+    public async Task<int?> PenalizeSellerForReportAsync(
+        Guid sellerId,
+        int penaltyPoints,
+        string reason,
+        Guid referenceId,
         CancellationToken cancellationToken = default)
     {
         if (sellerId == Guid.Empty)
         {
-            return false;
+            return null;
         }
 
         try
@@ -89,17 +97,18 @@ public sealed class UserClient : IUserClient
             var response = await _httpClient.PostAsJsonAsync("api/v1/internal/users/penalties", payload, JsonOptions, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
+                var applied = await ReadAppliedPointsAsync(response, penaltyPoints, cancellationToken);
                 _logger.LogInformation(
-                    "[REST Internal User] Successfully penalized seller '{SellerId}' with {Points} points (Reason: '{Reason}', ReferenceId: '{ReferenceId}')",
-                    sellerId, penaltyPoints, reason, referenceId);
-                return true;
+                    "[REST Internal User] Successfully penalized seller '{SellerId}': asked {Asked} points, applied {Applied} (Reason: '{Reason}', ReferenceId: '{ReferenceId}')",
+                    sellerId, penaltyPoints, applied, reason, referenceId);
+                return applied;
             }
 
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogWarning(
                 "[REST Internal User] Penalize seller failed for SellerId: {SellerId}. Status: {StatusCode}, Body: {Body}",
                 sellerId, response.StatusCode, errorBody);
-            return false;
+            return null;
         }
         catch (Exception ex)
         {
@@ -107,8 +116,44 @@ public sealed class UserClient : IUserClient
                 ex,
                 "[REST Internal User] Error connecting to UserService during penalize for SellerId: {SellerId}",
                 sellerId);
-            return false;
+            return null;
         }
+    }
+
+    /// <summary>Reads the points User really deducted; falls back to the requested points when the response has no usable figure.</summary>
+    private static async Task<int> ReadAppliedPointsAsync(HttpResponseMessage response, int requested, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("data", out var data)
+                && data.ValueKind == JsonValueKind.Object)
+            {
+                root = data;
+            }
+
+            if (root.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in root.EnumerateObject())
+                {
+                    if (string.Equals(property.Name, "appliedDelta", StringComparison.OrdinalIgnoreCase)
+                        && property.Value.ValueKind == JsonValueKind.Number
+                        && property.Value.TryGetInt32(out var delta))
+                    {
+                        return Math.Abs(delta);
+                    }
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // fall through to the requested value
+        }
+
+        return requested;
     }
 
     public async Task<bool> AdjustReputationAsync(
