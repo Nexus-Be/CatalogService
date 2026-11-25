@@ -1,4 +1,4 @@
-namespace Catalog.Application.Interfaces;
+﻿namespace Catalog.Application.Interfaces;
 
 using System;
 using System.Collections.Generic;
@@ -21,6 +21,17 @@ public interface IUserClient
         CancellationToken cancellationToken = default);
 
     Task<bool> PenalizeSellerAsync(
+        Guid sellerId,
+        int penaltyPoints,
+        string reason,
+        Guid referenceId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Applies the penalty and returns the points that User actually deducted (it can differ from the points asked for),
+    /// or null when the call failed. A duplicate request returns 0.
+    /// </summary>
+    Task<int?> PenalizeSellerForReportAsync(
         Guid sellerId,
         int penaltyPoints,
         string reason,
