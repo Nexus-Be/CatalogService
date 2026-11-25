@@ -27,17 +27,14 @@
 - **Qua API Gateway (Khuyến nghị cho Staging / Production):** `http://localhost:8080` (hoặc domain gateway chung của sàn).
 - **Trực tiếp Catalog Service (Local dev / Trực tiếp khi Gateway chưa mapping đủ route):** `http://localhost:8002`.
 
-> ⚠️ **LƯU Ý CỰC KỲ QUAN TRỌNG VỀ ĐỊNH TUYẾN GATEWAY (PORT 8080):**
-> Hiện tại, cấu hình YARP của Gateway (`nexus-gateway:8080`) nạp các route theo tiền tố URL:
-> 1. **Các endpoint ĐƯỢC GATEWAY HỖ TRỢ 100%:** Mọi endpoint bắt đầu bằng `/api/v1/products/*`, `/api/v1/categories/*`, `/api/v1/variants/*`, `/api/v1/images/*`, `/api/v1/seller/products/*`.
->    - Ví dụ: `GET/POST /api/v1/products/{id}/reviews`, `POST /api/v1/products/{id}/reports`, `GET /api/v1/products/{id}/rating-summary` đều chạy tốt qua `http://localhost:8080`.
-> 2. **Các endpoint CHƯA ĐƯỢC MAP TRONG GATEWAY (Sẽ nhận `404 Not Found` từ Gateway):**
->    - `PUT /api/v1/reviews/{id}` (Sửa đánh giá)
->    - `DELETE /api/v1/reviews/{id}` (Xóa đánh giá)
->    - `GET /api/v1/admin/products` & `PATCH /api/v1/admin/products/{id}/moderate` (Duyệt/Khóa SP)
->    - `GET /api/v1/admin/reports/products` & `PUT /api/v1/admin/reports/products/{reportId}/action` (Xử lý tố cáo)
->    - `PATCH /api/v1/admin/reviews/{id}/moderate` (Ẩn review)
->    👉 **Cách khắc phục cho FE:** Trong lúc chờ Gateway nạp thêm 4 cụm route (`reviews-route`, `admin-products-route`, `admin-reports-route`, `admin-reviews-route`), phía FE nên cấu hình Base URL động: các API trên gọi trực tiếp đến `http://localhost:8002`.
+> ✅ **TẤT CẢ 100% ENDPOINTS CATALOG ĐÃ ĐƯỢC GATEWAY HỖ TRỢ ĐẦY ĐỦ (PORT 8080):**
+> Nhánh `dev` mới nhất của Gateway (`nexus-gateway:8080`, commit `e972bac`) đã tích hợp hoàn chỉnh toàn bộ các routes của CatalogService:
+> 1. **Public & Seller Routes:** `/api/v1/products/*`, `/api/v1/categories/*`, `/api/v1/variants/*`, `/api/v1/images/*`, `/api/v1/seller/products/*`.
+> 2. **Reviews Mutations (Sửa/Xóa Đánh giá):** `PUT /api/v1/reviews/{id}` và `DELETE /api/v1/reviews/{id}` (Gateway tự động ưu tiên chuyển sang Catalog qua YARP Order `-1`).
+> 3. **Admin Reviews Moderation:** `PATCH /api/v1/admin/reviews/{id}/moderate` (Gateway ưu tiên chuyển sang Catalog qua YARP Order `-1`).
+> 4. **Admin Products:** `/api/v1/admin/products/{**catch-all}` (Duyệt, từ chối, khóa, mở khóa, cấm sản phẩm).
+> 5. **Admin Product Reports:** `/api/v1/admin/reports/products/{**catch-all}` (Hàng đợi và phán quyết tố cáo vi phạm sản phẩm).
+> 👉 **FE hoàn toàn có thể trỏ 100% request qua Gateway (`http://localhost:8080`) mà không cần trỏ trực tiếp sang port 8002.**
 
 ### 1.2 Headers bắt buộc
 | Loại API | Header bắt buộc | Giá trị |
@@ -72,15 +69,15 @@
 | **01** | `GET` | `/api/v1/products/{id}/rating-summary` | Public | Xem thống kê sao & điểm trung bình | `application/json` | ✅ Sẵn sàng |
 | **02** | `GET` | `/api/v1/products/{id}/reviews` | Public | Xem danh sách đánh giá của sản phẩm | `application/json` | ✅ Sẵn sàng |
 | **03** | `POST` | `/api/v1/products/{id}/reviews` | Buyer | Gửi đánh giá sau khi mua hàng | `multipart/form-data` | ✅ Sẵn sàng |
-| **04** | `PUT` | `/api/v1/reviews/{id}` | Buyer | Sửa đánh giá của chính mình (trong 30 ngày) | `multipart/form-data` | ⚠️ Gọi `:8002` (Thiếu route GW) |
-| **05** | `DELETE`| `/api/v1/reviews/{id}` | Buyer, Admin | Xóa bài đánh giá | `application/json` | ⚠️ Gọi `:8002` (Thiếu route GW) |
-| **06** | `PATCH` | `/api/v1/admin/reviews/{id}/moderate` | Admin, Staff | Ẩn/Hiện bài đánh giá vi phạm | `application/json` | ⚠️ Gọi `:8002` (Thiếu route GW) |
-| **07** | `GET` | `/api/v1/admin/products` | Admin, Staff | Danh sách sản phẩm chờ duyệt / toàn sàn | `application/json` | ⚠️ Gọi `:8002` (Thiếu route GW) |
-| **08** | `PATCH` | `/api/v1/admin/products/{id}/moderate` | Admin, Staff | Duyệt / Từ chối / Tạm khóa / Mở khóa / Cấm vĩnh viễn | `application/json` | ⚠️ Gọi `:8002` (Thiếu route GW) |
+| **04** | `PUT` | `/api/v1/reviews/{id}` | Buyer | Sửa đánh giá của chính mình (trong 30 ngày) | `multipart/form-data` | ✅ Sẵn sàng qua Gateway |
+| **05** | `DELETE`| `/api/v1/reviews/{id}` | Buyer, Admin | Xóa bài đánh giá | `application/json` | ✅ Sẵn sàng qua Gateway |
+| **06** | `PATCH` | `/api/v1/admin/reviews/{id}/moderate` | Admin, Staff | Ẩn/Hiện bài đánh giá vi phạm | `application/json` | ✅ Sẵn sàng qua Gateway |
+| **07** | `GET` | `/api/v1/admin/products` | Admin, Staff | Danh sách sản phẩm chờ duyệt / toàn sàn | `application/json` | ✅ Sẵn sàng qua Gateway |
+| **08** | `PATCH` | `/api/v1/admin/products/{id}/moderate` | Admin, Staff | Duyệt / Từ chối / Tạm khóa / Mở khóa / Cấm vĩnh viễn | `application/json` | ✅ Sẵn sàng qua Gateway |
 | **09** | `PATCH` | `/api/v1/products/{id}/status` | Seller | Người bán tự Tắt/Bật bán sản phẩm của mình | `application/json` | ✅ Sẵn sàng |
 | **10** | `POST` | `/api/v1/products/{id}/reports` | Buyer, Seller | Gửi tố cáo sản phẩm vi phạm (bắt buộc ảnh) | `multipart/form-data` | ✅ Sẵn sàng |
-| **11** | `GET` | `/api/v1/admin/reports/products` | Admin, Staff | Danh sách hàng đợi đơn tố cáo | `application/json` | ⚠️ Gọi `:8002` (Thiếu route GW) |
-| **12** | `PUT` | `/api/v1/admin/reports/products/{reportId}/action` | Admin, Staff | Phán quyết đơn tố cáo (Cấm sản phẩm / Bác bỏ) | `application/json` | ⚠️ Gọi `:8002` (Thiếu route GW) |
+| **11** | `GET` | `/api/v1/admin/reports/products` | Admin, Staff | Danh sách hàng đợi đơn tố cáo | `application/json` | ✅ Sẵn sàng qua Gateway |
+| **12** | `PUT` | `/api/v1/admin/reports/products/{reportId}/action` | Admin, Staff | Phán quyết đơn tố cáo (Cấm sản phẩm / Bác bỏ) | `application/json` | ✅ Sẵn sàng qua Gateway |
 
 ---
 
@@ -333,7 +330,7 @@
 | ❌ **3** | **Tự set Header `Content-Type: multipart/form-data` thủ công:** Viết `headers: { 'Content-Type': 'multipart/form-data' }`. | Mất chuỗi `boundary` $\to$ Backend không thể parse file $\to$ Lỗi `400 Bad Request`. | **Không khai báo Content-Type** khi gửi `FormData`. Trình duyệt sẽ tự động thêm `multipart/form-data; boundary=...`. |
 | ❌ **4** | **Đặt sai tên field upload ảnh:** Dùng `images` hoặc `evidenceImages` thay vì đúng tên controller yêu cầu. | Backend không nhận được file $\to$ Báo lỗi thiếu ảnh. | - Review: Dùng đúng tên `reviewImages`.<br>- Report: Dùng đúng tên `evidenceFiles`. |
 | ❌ **5** | **Dùng sai tên field `note` trong Moderate Report:** Gửi body `{ action: "BAN_PRODUCT", note: "..." }`. | Lỗi `400 VAL_INVALID_INPUT` (`Resolution note is required.`). | Phải đặt đúng tên field là `resolutionNote`. |
-| ⚠️ **6** | **Gặp lỗi 404 trống khi gọi qua Gateway (`:8080`):** Gọi `PUT /api/v1/reviews/{id}` hoặc các API `admin/*` qua Gateway 8080 bị trả về 404 rỗng. | Cấu hình YARP của Gateway chưa mapping 4 cụm route (`/reviews`, `/admin/products`, `/admin/reports`, `/admin/reviews`) sang `catalog-service`. | Tạm thời trỏ Base URL của các API này trực tiếp sang Catalog Service (`http://localhost:8002`) hoặc thông báo team DevOps/Gateway bổ sung 4 route này vào file `appsettings.json` của Gateway. |
+| ✅ **6** | **Định tuyến qua Gateway (`:8080`):** Toàn bộ API sửa/xóa review và các API admin Catalog. | Đã được cấu hình hoàn chỉnh trong Gateway YARP proxy (commit `e972bac`). | FE có thể gọi trực tiếp qua Base URL Gateway (`http://localhost:8080`) cho mọi endpoint Catalog. |
 
 ---
 

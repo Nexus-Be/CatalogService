@@ -13,5 +13,11 @@ public interface INotificationClient
         string? notificationType = null,
         string? payload = null,
         CancellationToken cancellationToken = default);
+
+    Task<bool> SendEmailNotificationAsync(
+        string toEmail,
+        string subject,
+        string htmlBody,
+        CancellationToken cancellationToken = default);
 }
 
