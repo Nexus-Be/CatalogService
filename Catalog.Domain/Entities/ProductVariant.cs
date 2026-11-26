@@ -6,6 +6,7 @@ namespace Catalog.Domain.Entities;
 public class ProductVariant : AuditableEntity<Guid>
 {
     public required Guid ProductId { get; set; }
+    public Guid SellerId { get; set; }
     public required string SkuCode { get; set; }
     public required string Name { get; set; }
     public decimal? Price { get; set; }

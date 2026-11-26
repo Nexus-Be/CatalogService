@@ -31,7 +31,8 @@ public sealed class NotificationClient : INotificationClient
         string body,
         string? notificationType = null,
         string? payload = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid? sourceEventId = null)
     {
         if (userId == Guid.Empty)
         {
@@ -43,6 +44,7 @@ public sealed class NotificationClient : INotificationClient
             var requestPayload = new
             {
                 userId = userId,
+                sourceEventId = sourceEventId,
                 title = title,
                 body = body,
                 notificationType = notificationType,

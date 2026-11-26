@@ -4,6 +4,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -112,7 +114,10 @@ public sealed class ProductService : IProductService
         if (!string.IsNullOrWhiteSpace(query.Keyword))
         {
             var keyword = query.Keyword.Trim().ToLower();
-            products = products.Where(p => p.Name.ToLower().Contains(keyword));
+            products = products.Where(p =>
+                p.Name.ToLower().Contains(keyword) ||
+                (p.Brand != null && p.Brand.ToLower().Contains(keyword)) ||
+                p.Variants.Any(v => !v.IsDeleted && v.Status == VariantStatus.Active && v.SkuCode.ToLower().Contains(keyword)));
         }
         if (query.CategoryId.HasValue) products = products.Where(p => p.CategoryId == query.CategoryId.Value);
         if (query.SellerId.HasValue) products = products.Where(p => p.SellerId == query.SellerId.Value);
@@ -461,21 +466,28 @@ public sealed class ProductService : IProductService
             if (request.Variants != null && request.Variants.Count > 0)
             {
                 var firstVariant = request.Variants[0];
-                aucSku = !string.IsNullOrWhiteSpace(firstVariant.SkuCode)
-                    ? firstVariant.SkuCode.Trim()
-                    : $"AUC-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+                if (!string.IsNullOrWhiteSpace(firstVariant.SkuCode))
+                {
+                    aucSku = firstVariant.SkuCode.Trim();
+                    await EnsureUniqueSkuInShopAsync(request.SellerId, aucSku, null, cancellationToken);
+                }
+                else
+                {
+                    aucSku = GenerateAuctionSku();
+                }
                 if (!string.IsNullOrWhiteSpace(firstVariant.Name)) aucName = firstVariant.Name.Trim();
                 aucAttributes = firstVariant.Attributes;
             }
             else
             {
-                aucSku = $"AUC-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+                aucSku = GenerateAuctionSku();
             }
 
             var aucVariant = new ProductVariant
             {
                 Id = Guid.NewGuid(),
                 ProductId = product.Id,
+                SellerId = request.SellerId,
                 SkuCode = aucSku,
                 Name = aucName,
                 Price = null,
@@ -517,6 +529,11 @@ public sealed class ProductService : IProductService
                 throw new BusinessRuleValidationException("MAX_VARIANTS_REACHED", "A product cannot exceed 10 variants.");
             }
 
+            if (request.Variants.Any(v => string.IsNullOrWhiteSpace(v.SkuCode)))
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Sku code is required for all regular product variants.");
+            }
+
             var requestedSkus = request.Variants.Select(v => v.SkuCode.Trim().ToLower()).ToList();
             if (requestedSkus.Distinct().Count() != requestedSkus.Count)
             {
@@ -533,7 +550,7 @@ public sealed class ProductService : IProductService
 
             if (existingSku != null)
             {
-                throw new BusinessRuleValidationException("DUPLICATE_SKU", $"SKU code '{existingSku}' already exists in your shop.", 409);
+                throw new BusinessRuleValidationException("DUPLICATE_SKU", $"Sku code '{existingSku}' already exists in your shop.", 409);
             }
 
             for (int i = 0; i < request.Variants.Count; i++)
@@ -568,6 +585,7 @@ public sealed class ProductService : IProductService
                 {
                     Id = Guid.NewGuid(),
                     ProductId = product.Id,
+                    SellerId = request.SellerId,
                     SkuCode = v.SkuCode.Trim(),
                     Name = string.IsNullOrWhiteSpace(v.Name) ? product.Name : v.Name.Trim(),
                     Price = v.Price,
@@ -714,14 +732,22 @@ public sealed class ProductService : IProductService
             IsDeleted = false
         };
 
-        var skuCode = !string.IsNullOrWhiteSpace(request.SkuCode)
-            ? request.SkuCode.Trim()
-            : $"AUC-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+        string skuCode;
+        if (!string.IsNullOrWhiteSpace(request.SkuCode))
+        {
+            skuCode = request.SkuCode.Trim();
+            await EnsureUniqueSkuInShopAsync(currentUserId, skuCode, null, cancellationToken);
+        }
+        else
+        {
+            skuCode = GenerateAuctionSku();
+        }
 
         var variant = new ProductVariant
         {
             Id = Guid.NewGuid(),
             ProductId = product.Id,
+            SellerId = currentUserId,
             SkuCode = skuCode,
             Name = product.Name,
             Price = null,
@@ -1680,19 +1706,10 @@ public sealed class ProductService : IProductService
         var sku = request.SkuCode?.Trim();
         if (string.IsNullOrWhiteSpace(sku))
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "SKU code is required.");
+            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Sku code is required.");
         }
 
-        var skuExists = await _dbContext.ProductVariants
-            .AsNoTracking()
-            .AnyAsync(v => !v.IsDeleted 
-                        && v.Product != null && v.Product.SellerId == currentUserId 
-                        && v.SkuCode.ToLower() == sku.ToLower(), cancellationToken);
-
-        if (skuExists)
-        {
-            throw new BusinessRuleValidationException("DUPLICATE_SKU", $"SKU code '{sku}' already exists in your shop.", 409);
-        }
+        await EnsureUniqueSkuInShopAsync(currentUserId, sku, null, cancellationToken);
 
         if (!request.Price.HasValue || request.Price.Value <= 0)
         {
@@ -1726,6 +1743,7 @@ public sealed class ProductService : IProductService
         {
             Id = Guid.NewGuid(),
             ProductId = productId,
+            SellerId = currentUserId,
             SkuCode = sku,
             Name = request.Name.Trim(),
             Price = request.Price,
@@ -1810,6 +1828,33 @@ public sealed class ProductService : IProductService
         if (request.Price <= 0)
         {
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Price must be greater than 0.");
+        }
+
+        if (request.SkuCode is not null)
+        {
+            var newSku = request.SkuCode.Trim();
+            if (string.IsNullOrWhiteSpace(newSku))
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Sku code cannot be blank.");
+            }
+
+            if (!string.Equals(newSku, variant.SkuCode, StringComparison.Ordinal))
+            {
+                if (variant.HasOrder)
+                {
+                    throw new BusinessRuleValidationException("SKU_LOCKED_BY_ORDER", "Cannot change sku code after an order has been placed.", 409);
+                }
+
+                var canEditSku = variant.Product.Status == ProductStatus.Draft
+                    || (variant.Product.Status == ProductStatus.Inactive && variant.Product.StatusReason == ProductInactiveReason.Rejected);
+                if (!canEditSku)
+                {
+                    throw new BusinessRuleValidationException("SKU_LOCKED_BY_STATUS", "Sku code can only be changed while the product is in draft or rejected status.", 409);
+                }
+
+                await EnsureUniqueSkuInShopAsync(currentUserId, newSku, variant.Id, cancellationToken);
+                variant.SkuCode = newSku;
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(request.Name))
@@ -3105,6 +3150,7 @@ public sealed class ProductService : IProductService
         if (product.SellerId != Guid.Empty)
         {
             var reasonText = request.Reason ?? request.Note ?? "Không có lý do chi tiết";
+            var moderationEventId = new Guid(MD5.HashData(Encoding.UTF8.GetBytes($"product-moderation:{product.Id:D}:{action}:{product.UpdatedAt:O}")));
             switch (action)
             {
                 case "APPROVE":
@@ -3115,7 +3161,8 @@ public sealed class ProductService : IProductService
                         $"Sản phẩm '{product.Name}' của bạn đã được kiểm duyệt đạt chuẩn và chính thức mở bán trên sàn.",
                         "PRODUCT_APPROVED",
                         $"{{\"productId\":\"{product.Id}\",\"status\":\"Active\"}}",
-                        cancellationToken);
+                        cancellationToken,
+                        sourceEventId: moderationEventId);
                     break;
                 case "REJECT":
                     await _notificationClient.SendInAppNotificationAsync(
@@ -3124,7 +3171,8 @@ public sealed class ProductService : IProductService
                         $"Sản phẩm '{product.Name}' chưa đạt yêu cầu kiểm duyệt. Lý do: {reasonText}. Vui lòng cập nhật lại thông tin.",
                         "PRODUCT_REJECTED",
                         $"{{\"productId\":\"{product.Id}\",\"reason\":\"{reasonText}\",\"status\":\"Draft\"}}",
-                        cancellationToken);
+                        cancellationToken,
+                        sourceEventId: moderationEventId);
                     break;
                 case "SUSPEND":
                     await _notificationClient.SendInAppNotificationAsync(
@@ -3133,7 +3181,8 @@ public sealed class ProductService : IProductService
                         $"Sản phẩm '{product.Name}' đã bị tạm khóa do nghi vấn vi phạm hoặc chờ bổ sung chứng từ. Lý do: {reasonText}.",
                         "PRODUCT_SUSPENDED",
                         $"{{\"productId\":\"{product.Id}\",\"reason\":\"{reasonText}\",\"status\":\"Inactive\"}}",
-                        cancellationToken);
+                        cancellationToken,
+                        sourceEventId: moderationEventId);
                     break;
                 case "BAN":
                     await _notificationClient.SendInAppNotificationAsync(
@@ -3142,7 +3191,8 @@ public sealed class ProductService : IProductService
                         $"Sản phẩm '{product.Name}' đã bị gỡ bỏ vĩnh viễn khỏi hệ thống do vi phạm nghiêm trọng chính sách sàn. Tài khoản Shop bị phạt trừ 10 điểm uy tín. Lý do: {reasonText}.",
                         "PRODUCT_BANNED",
                         $"{{\"productId\":\"{product.Id}\",\"penaltyPoints\":10,\"status\":\"Banned\"}}",
-                        cancellationToken);
+                        cancellationToken,
+                        sourceEventId: moderationEventId);
                     break;
             }
         }
@@ -3520,4 +3570,27 @@ public sealed class ProductService : IProductService
             product.WidthCm,
             product.HeightCm);
     }
+
+    private async Task EnsureUniqueSkuInShopAsync(
+        Guid sellerId,
+        string skuCode,
+        Guid? excludeVariantId,
+        CancellationToken cancellationToken)
+    {
+        var normalized = skuCode.Trim().ToLower();
+        var exists = await _dbContext.ProductVariants
+            .AsNoTracking()
+            .AnyAsync(v => (!excludeVariantId.HasValue || v.Id != excludeVariantId.Value)
+                        && !v.IsDeleted
+                        && (v.SellerId == sellerId || (v.Product != null && v.Product.SellerId == sellerId))
+                        && v.SkuCode.ToLower() == normalized, cancellationToken);
+
+        if (exists)
+        {
+            throw new BusinessRuleValidationException("DUPLICATE_SKU", $"Sku code '{skuCode}' already exists in your shop.", 409);
+        }
+    }
+
+    private static string GenerateAuctionSku() =>
+        $"AUC-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
 }

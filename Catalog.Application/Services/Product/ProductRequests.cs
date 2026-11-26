@@ -83,7 +83,8 @@ public sealed record UpdateVariantRequest(
     int? WeightGrams = null,
     int? LengthCm = null,
     int? WidthCm = null,
-    int? HeightCm = null);
+    int? HeightCm = null,
+    string? SkuCode = null);
 
 public sealed record MarkVariantsOrderedRequest(List<Guid> VariantIds);
 
