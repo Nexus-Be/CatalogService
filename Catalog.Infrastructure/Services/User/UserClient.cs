@@ -1,4 +1,4 @@
-﻿namespace Catalog.Infrastructure.Services.User;
+namespace Catalog.Infrastructure.Services.User;
 
 using System;
 using System.Net.Http;
@@ -89,6 +89,9 @@ public sealed class UserClient : IUserClient
             {
                 userId = sellerId,
                 targetRole = "Seller",
+                violationType = "Other",
+                referenceType = "Dispute",
+                customScoreDeduction = penaltyPoints,
                 penaltyPoints = penaltyPoints,
                 reason = reason,
                 referenceId = referenceId.ToString()
@@ -169,13 +172,31 @@ public sealed class UserClient : IUserClient
 
         try
         {
+            // Map rating stars (1-5) to reputation score delta based on UserService ReputationRules:
+            // 1 star: -2, 2 stars: -1, 3 stars: 0, 4 or 5 stars: +1
+            var scoreDelta = ratingStar switch
+            {
+                1 => -2,
+                2 => -1,
+                3 => 0,
+                4 or 5 => 1,
+                _ => 0
+            };
+
+            var changeReason = ratingStar >= 4
+                ? "PositiveReview"
+                : (ratingStar <= 2 ? "NegativeReview" : "OrderCompleted");
+
             var payload = new
             {
                 userId = sellerId,
                 targetRole = "Seller",
-                ratingStar = ratingStar,
+                scoreDelta = scoreDelta,
+                reason = changeReason,
+                referenceType = "Order",
                 orderId = orderId,
-                referenceId = orderId.ToString()
+                referenceId = orderId.ToString(),
+                ratingStar = ratingStar
             };
 
             var response = await _httpClient.PostAsJsonAsync("api/v1/internal/users/reputation-adjust", payload, JsonOptions, cancellationToken);
