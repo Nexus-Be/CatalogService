@@ -183,6 +183,7 @@ public static class CatalogSeedData
             {
                 Id = variant1Id,
                 ProductId = product1Id,
+                SellerId = sellerUserId,
                 SkuCode = "NX-PHONE-256",
                 Name = "Smartphone Nexus X Pro 256GB Midnight Black",
                 Price = 15000000m,
@@ -198,6 +199,7 @@ public static class CatalogSeedData
             {
                 Id = variant2Id,
                 ProductId = product2Id,
+                SellerId = sellerUserId,
                 SkuCode = "NX-HOODIE-L",
                 Name = "Áo Hoodie Nexus Unisex Cotton - Đen / Size L",
                 Price = 450000m,
@@ -213,6 +215,7 @@ public static class CatalogSeedData
             {
                 Id = variant3Id,
                 ProductId = product3Id,
+                SellerId = sellerUserId,
                 SkuCode = "NX-KETTLE-17",
                 Name = "Ấm Siêu Tốc Thông Minh Nexus 1.7L Trắng Tinh Khôi",
                 Price = 850000m,
@@ -228,6 +231,7 @@ public static class CatalogSeedData
             {
                 Id = variant4Id,
                 ProductId = product4Id,
+                SellerId = sellerUserId,
                 SkuCode = "NX-HELMET-M",
                 Name = "Mũ Bảo Hiểm Xe Đạp Nexus Aero - Đỏ / Size M",
                 Price = 620000m,
@@ -243,6 +247,7 @@ public static class CatalogSeedData
             {
                 Id = variant5Id,
                 ProductId = product5Id,
+                SellerId = sellerUserId,
                 SkuCode = "NX-BOOK-ARCH",
                 Name = "Clean Architecture trong Microservices (Bìa Cứng)",
                 Price = 350000m,

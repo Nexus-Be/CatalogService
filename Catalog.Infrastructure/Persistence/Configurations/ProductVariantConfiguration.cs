@@ -9,8 +9,13 @@ public class ProductVariantConfiguration : IEntityTypeConfiguration<ProductVaria
     public void Configure(EntityTypeBuilder<ProductVariant> builder)
     {
         builder.HasKey(x => x.Id);
+        builder.Property(x => x.SellerId).IsRequired();
         builder.Property(x => x.SkuCode).HasMaxLength(100).IsRequired();
-        builder.HasIndex(x => x.SkuCode).IsUnique();
+        builder.HasIndex(x => x.SkuCode);
+        builder.HasIndex(x => new { x.SellerId, x.SkuCode })
+            .HasDatabaseName("IX_ProductVariants_SellerId_SkuCode")
+            .IsUnique()
+            .HasFilter("\"IsDeleted\" = false");
         builder.Property(x => x.Name).HasMaxLength(255).IsRequired();
         builder.Property(x => x.Price).HasPrecision(18, 2);
         builder.Property(x => x.Currency).HasMaxLength(10);

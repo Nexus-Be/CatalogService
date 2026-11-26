@@ -12,7 +12,8 @@ public interface INotificationClient
         string body,
         string? notificationType = null,
         string? payload = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        Guid? sourceEventId = null);
 
     Task<bool> SendEmailNotificationAsync(
         string toEmail,
