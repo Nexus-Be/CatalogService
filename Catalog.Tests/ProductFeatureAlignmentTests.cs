@@ -200,6 +200,80 @@ public sealed class ProductFeatureAlignmentTests
         Assert.Equal("AUCTION_FORCE_CANCEL_REQUIRED", ex.ErrorCode);
     }
 
+    [Fact]
+    public async Task ModerateProduct_WhenSuspendedThenUnlocked_ReactivatesProductAndVariants()
+    {
+        await using var db = CreateDb();
+        var product = new Product
+        {
+            Id = Guid.NewGuid(),
+            SellerId = SellerId,
+            CategoryId = Guid.NewGuid(),
+            Name = "Multi-Variant Test Product",
+            SaleType = SaleType.Regular,
+            Status = ProductStatus.PendingApproval,
+            WeightGrams = 500,
+            Variants = new List<ProductVariant>
+            {
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = Guid.NewGuid(),
+                    SellerId = SellerId,
+                    SkuCode = "TEST-SKU-1",
+                    Name = "Variant 1",
+                    Price = 100000,
+                    Status = VariantStatus.Active,
+                    WeightGrams = 500
+                },
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = Guid.NewGuid(),
+                    SellerId = SellerId,
+                    SkuCode = "TEST-SKU-2",
+                    Name = "Variant 2",
+                    Price = 200000,
+                    Status = VariantStatus.Active,
+                    WeightGrams = 500
+                }
+            },
+            Images = new List<ProductImage>
+            {
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = Guid.NewGuid(),
+                    Url = "https://example.com/image.jpg",
+                    IsActive = true,
+                    SortOrder = 0
+                }
+            }
+        };
+        db.Products.Add(product);
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+
+        // 1. Admin suspends product
+        var suspendResult = await service.ModerateProductAsync(
+            product.Id,
+            new ModerateProductRequest("SUSPEND", "Suspicious product description"),
+            AdminId);
+
+        Assert.Equal(ProductStatus.Inactive.ToString(), suspendResult.Status);
+        Assert.All(product.Variants, v => Assert.Equal(VariantStatus.Inactive, v.Status));
+
+        // 2. Admin unlocks product
+        var unlockResult = await service.ModerateProductAsync(
+            product.Id,
+            new ModerateProductRequest("UNLOCK", "Seller provided requested documents"),
+            AdminId);
+
+        Assert.Equal(ProductStatus.Active.ToString(), unlockResult.Status);
+        Assert.All(product.Variants, v => Assert.Equal(VariantStatus.Active, v.Status));
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-10)]
