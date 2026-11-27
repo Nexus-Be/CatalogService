@@ -3011,23 +3011,31 @@ public sealed class ProductService : IProductService
 
         if (action == "APPROVE" || action == "UNLOCK")
         {
+            var actionWord = action == "UNLOCK" ? "unlock" : "approve";
+
+            // Activate valid variants first so that UNLOCK (or APPROVE from draft) has active variants ready for validation
+            foreach (var v in product.Variants.Where(v => !v.IsDeleted && (product.SaleType == SaleType.Auction || (v.Price.HasValue && v.Price.Value > 0))))
+            {
+                v.Status = VariantStatus.Active;
+            }
+
             var hasActiveVariant = product.Variants.Any(v => !v.IsDeleted && v.Status == VariantStatus.Active && (product.SaleType == SaleType.Auction || (v.Price.HasValue && v.Price.Value > 0)));
             if (!hasActiveVariant)
             {
-                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot approve product without at least one active variant with valid price.");
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Cannot {actionWord} product without at least one active variant with valid price.");
             }
 
             var hasActiveImage = product.Images.Any(i => !i.IsDeleted && i.IsActive);
             if (!hasActiveImage)
             {
-                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot approve product without at least one active product image.");
+                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Cannot {actionWord} product without at least one active product image.");
             }
 
             if (product.SaleType == SaleType.Auction)
             {
                 if (!product.WeightGrams.HasValue || product.WeightGrams.Value <= 0)
                 {
-                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot approve auction product without valid shipping weight. Product must declare WeightGrams greater than 0.");
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Cannot {actionWord} auction product without valid shipping weight. Product must declare WeightGrams greater than 0.");
                 }
             }
             else
@@ -3041,7 +3049,7 @@ public sealed class ProductService : IProductService
 
                     if (variantsMissingWeight)
                     {
-                        throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Cannot approve product without valid shipping weight. Either declare WeightGrams on product or provide WeightGrams greater than 0 for all active variants.");
+                        throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"Cannot {actionWord} product without valid shipping weight. Either declare WeightGrams on product or provide WeightGrams greater than 0 for all active variants.");
                     }
                 }
             }
@@ -3049,12 +3057,6 @@ public sealed class ProductService : IProductService
             product.Status = ProductStatus.Active;
             product.StatusReason = null;
             product.PublishedAt ??= now;
-
-            // Activate valid variants
-            foreach (var v in product.Variants.Where(v => !v.IsDeleted && (product.SaleType == SaleType.Auction || (v.Price.HasValue && v.Price.Value > 0))))
-            {
-                v.Status = VariantStatus.Active;
-            }
 
             // Every active SKU of a Regular product needs its inventory row in FulfillmentService. The state is saved with the
             // approval, then tried once below; a failure stays Pending and the background worker retries it.

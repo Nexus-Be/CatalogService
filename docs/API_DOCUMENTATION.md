@@ -11,7 +11,7 @@
 
 ---
 
-## 📌 MỤC LỤC DANH SÁCH 51 ENDPOINTS
+## 📌 MỤC LỤC DANH SÁCH 53 ENDPOINTS
 
 | STT | Phương thức | Endpoint Route | Controller & Action | Nhóm nghiệp vụ |
 | :---: | :---: | :--- | :--- | :--- |
@@ -66,6 +66,8 @@
 | **49** | `DELETE` | `/api/v1/reviews/{id}` | `ReviewsController.DeleteReview` | Đánh giá & Xếp hạng (CAT-64) |
 | **50** | `PATCH` | `/api/v1/admin/reviews/{id}/moderate` | `AdminReviewsController.ModerateReview` | Kiểm duyệt Đánh giá (CAT-65) |
 | **51** | `POST` | `/api/v1/internal/purchases` | `InternalPurchasesController.SyncPurchase` | Đồng bộ Đơn mua (CAT-66) |
+| **52** | `GET` | `/api/v1/internal/audit-logs/unsynced` | `InternalAuditLogsController.GetUnsynced` | Nhật ký Kiểm toán (CAT-67) |
+| **53** | `POST` | `/api/v1/internal/audit-logs/mark-synced` | `InternalAuditLogsController.MarkSynced` | Nhật ký Kiểm toán (CAT-68) |
 
 ---
 
@@ -1076,3 +1078,23 @@
 - **Endpoint Route:** `/api/v1/internal/purchases`
 - **Mô tả:** Nhận dữ liệu đơn hàng đã hoàn tất từ OrderService để lưu vào bảng `PurchaseRecords`, kích hoạt quyền đánh giá (Verified Purchase) cho Buyer. Hỗ trợ Idempotent.
 - **Tài liệu chi tiết:** Xem [`POST_INTERNAL_PURCHASES.md`](api/Reviews/POST_INTERNAL_PURCHASES.md).
+
+---
+
+### API 52. `GET /api/v1/internal/audit-logs/unsynced` — Lấy danh sách nhật ký kiểm toán chưa đồng bộ [CAT-67]
+- **Quyền hạn:** `Internal` (Yêu cầu Header `X-Internal-Service-Key`).
+- **Endpoint Route:** `/api/v1/internal/audit-logs/unsynced?limit=200`
+- **Controller:** `Catalog.Api.Controllers.Internal.InternalAuditLogsController.GetUnsynced`
+- **Mô tả:** Phục vụ dịch vụ Logs trung tâm kéo các bản ghi nhật ký kiểm toán chưa đồng bộ (`IsSynced = false`), sắp xếp theo thời gian cũ nhất trước.
+- **Tài liệu chi tiết:** Xem [`GET_internal_audit_logs_unsynced.md`](api/Internal/GET_internal_audit_logs_unsynced.md).
+
+---
+
+### API 53. `POST /api/v1/internal/audit-logs/mark-synced` — Đánh dấu nhật ký kiểm toán đã đồng bộ [CAT-68]
+- **Quyền hạn:** `Internal` (Yêu cầu Header `X-Internal-Service-Key`).
+- **Endpoint Route:** `/api/v1/internal/audit-logs/mark-synced`
+- **Controller:** `Catalog.Api.Controllers.Internal.InternalAuditLogsController.MarkSynced`
+- **Request Body:** `{ "ids": ["e9c1d9b3-1f2a-4a6c-8c1e-3f5a7b9c1d3e"] }`
+- **Mô tả:** Xác nhận hoàn tất lưu trữ nhật ký tại dịch vụ Logs trung tâm để chuyển trạng thái `IsSynced = true`.
+- **Tài liệu chi tiết:** Xem [`POST_internal_audit_logs_mark_synced.md`](api/Internal/POST_internal_audit_logs_mark_synced.md).
+
