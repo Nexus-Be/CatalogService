@@ -14,7 +14,8 @@ public sealed record ProductReportDto(
     DateTimeOffset CreatedAt,
     Guid? ReviewedBy = null,
     DateTimeOffset? ReviewedAt = null,
-    string? ResolutionNote = null
+    string? ResolutionNote = null,
+    string? ProductPrimaryImageUrl = null
 );
 
 public sealed record ProductReportListItemDto(
@@ -30,5 +31,6 @@ public sealed record ProductReportListItemDto(
     DateTimeOffset CreatedAt,
     Guid? ReviewedBy = null,
     DateTimeOffset? ReviewedAt = null,
-    string? ResolutionNote = null
+    string? ResolutionNote = null,
+    string? ProductPrimaryImageUrl = null
 );

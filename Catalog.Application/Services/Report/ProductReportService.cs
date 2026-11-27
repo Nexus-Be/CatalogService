@@ -220,7 +220,14 @@ public sealed class ProductReportService : IProductReportService
                 r.CreatedAt,
                 r.ReviewedBy,
                 r.ReviewedAt,
-                r.ResolutionNote
+                r.ResolutionNote,
+                r.Product != null
+                    ? r.Product.Images
+                        .Where(i => !i.IsDeleted && i.IsActive)
+                        .OrderBy(i => i.SortOrder)
+                        .Select(i => i.Url)
+                        .FirstOrDefault()
+                    : null
             ))
             .ToListAsync(cancellationToken);
 
@@ -428,6 +435,8 @@ public sealed class ProductReportService : IProductReportService
         CancellationToken cancellationToken = default)
     {
         var report = await _dbContext.ProductReports
+            .Include(r => r.Product)
+                .ThenInclude(p => p!.Images)
             .AsNoTracking()
             .FirstOrDefaultAsync(r => r.Id == reportId && !r.IsDeleted, cancellationToken)
             ?? throw new EntityNotFoundException("REPORT_NOT_FOUND", "ProductReport", reportId);
@@ -440,6 +449,8 @@ public sealed class ProductReportService : IProductReportService
         CancellationToken cancellationToken = default)
     {
         var reports = await _dbContext.ProductReports
+            .Include(r => r.Product)
+                .ThenInclude(p => p!.Images)
             .AsNoTracking()
             .Where(r => r.ReporterId == userId && !r.IsDeleted)
             .OrderByDescending(r => r.CreatedAt)
@@ -450,6 +461,12 @@ public sealed class ProductReportService : IProductReportService
 
     private static ProductReportDto MapToDto(ProductReport report)
     {
+        var primaryImageUrl = report.Product?.Images
+            .Where(i => !i.IsDeleted && i.IsActive)
+            .OrderBy(i => i.SortOrder)
+            .Select(i => i.Url)
+            .FirstOrDefault();
+
         return new ProductReportDto(
             report.Id,
             report.ProductId,
@@ -461,7 +478,8 @@ public sealed class ProductReportService : IProductReportService
             report.CreatedAt,
             report.ReviewedBy,
             report.ReviewedAt,
-            report.ResolutionNote
+            report.ResolutionNote,
+            primaryImageUrl
         );
     }
 
