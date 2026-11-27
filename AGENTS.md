@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **CatalogService** (2519 symbols, 4938 relationships, 209 execution flows).
+This project is indexed by GitNexus as **CatalogService** (2604 symbols, 5085 relationships, 216 execution flows).
 
 > Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
@@ -29,6 +29,17 @@ This project is indexed by GitNexus as **CatalogService** (2519 symbols, 4938 re
 | `gitnexus://repo/CatalogService/clusters` | All functional areas |
 | `gitnexus://repo/CatalogService/processes` | All execution flows |
 | `gitnexus://repo/CatalogService/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+| --- | --- |
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
 
