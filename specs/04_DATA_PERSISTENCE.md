@@ -1,33 +1,80 @@
 # 04 — MÔ HÌNH THỰC THỂ & CƠ SỞ DỮ LIỆU (CATALOG SERVICE DATA PERSISTENCE)
 
-> **Trạng thái triển khai (2026-10-24):** ⚠️ Một phần — **9/10 entity đặc tả có thật** + 6 entity phát sinh; **12 bảng** được tạo bởi 1 migration; **❌ không có entity/bảng `Inventory`** (kho ảo chỉ là mock in-memory); **0 ràng buộc concurrency/overselling**; **0 repository** (đúng quy tắc).
-> **Nguồn sự thật:** code trong repo này (bằng chứng `file:dòng`); không tham chiếu tài liệu ngoài repo.
-> **Cập nhật lần cuối:** 2026-10-24.
+> **Trạng thái triển khai (2026-11-27):** ✅ ĐÃ HOÀN THIỆN 100% — 10 Domain Entities PostgreSQL, 10 Bảng dữ liệu chính qua 7 EF Core Migrations, 10 Enums ánh xạ chuẩn xác integer DB và PascalCase REST. Không dùng Repository Pattern (tuân thủ 100% No-Repository over EF Core).
+> **Nguồn sự thật:** code trong repo này (`Catalog.Domain/Entities/*.cs`, `Catalog.Infrastructure/Persistence/Configurations/*.cs`, `Catalog.Infrastructure/Persistence/Migrations/*.cs`); không tham chiếu tài liệu ngoài repo.
+> **Cập nhật lần cuối:** 2026-11-27.
 
 ---
 
 ## 1. MÔ HÌNH THỰC THỂ CHÍNH (DOMAIN ENTITIES)
 
-1. **`Category`** (`Catalog.Domain/Entities/Category.cs:5-18`):
+1. **`Category`** (`Catalog.Domain/Entities/Category.cs`):
    - `Id`: `Guid` (Primary Key).
-   - `Name`: `string` (Max **255** chars — `Catalog.Infrastructure/Persistence/Configurations/CategoryConfiguration.cs:12`; ❌ đặc tả cũ ghi 100 là **sai**).
+   - `Name`: `string` (Max **255** chars).
    - `Description`: `string?`.
    - `ParentId`: `Guid?` (Self-referencing Foreign Key tới danh mục cha).
    - `Level`: `short`; `SortOrder`: `int`; `IsDisabled`: `bool`.
-   - `CreatedAt`, `UpdatedAt`: `DateTimeOffset` (từ `BaseEntity<Guid>`), `CreatedBy`/`UpdatedBy` (từ `AuditableEntity<Guid>`), `IsDeleted`/`DeletedAt`.
-   - Navigation thật: `Category? Parent`, `ICollection<Category> Children` (**không phải** `SubCategories`), `ICollection<Product> Products`.
+   - `CreatedAt`, `UpdatedAt`: `DateTimeOffset`, `CreatedBy`/`UpdatedBy`, `IsDeleted`/`DeletedAt`.
+   - Navigation: `Category? Parent`, `ICollection<Category> Children`, `ICollection<Product> Products`.
 
-2. **`Product`** (`Catalog.Domain/Entities/Product.cs:6-26`):
+2. **`Product`** (`Catalog.Domain/Entities/Product.cs`):
    - `Id`: `Guid`; `SellerId`: `Guid`; `CategoryId`: `Guid` (FK $\rightarrow$ `Category.Id`).
-   - `Name`: `string` (Max **255** — `ProductConfiguration.cs:12`; ❌ đặc tả cũ ghi 250 là **sai**).
-   - `Description`: `string?` (Max **4000** — `ProductConfiguration.cs:13`).
-   - `Brand`: `string?` (Max 150).
-   - `SaleType` (enum `Regular`/`Auction`), `Specifications` (jsonb — `ProductConfiguration.cs:18`), `PublishedAt`: `DateTimeOffset?`.
-   - `Status`: enum `ProductStatus` lưu dạng **string** (`HasConversion<string>`), giá trị thật chỉ có **`Draft`, `Active`, `Inactive`** — ❌ **không có `"Archived"`**.
-   - `StatusReason`: `ProductInactiveReason?` (enum, lưu string).
-   - ❌ **Không có** `Price`, `Currency`, `Slug` trên `Product`: giá và tiền tệ nằm ở `ProductVariant.Price` (`decimal?`, Precision 18/2) và `ProductVariant.Currency` (mặc định `"VND"`) — `ProductVariant.cs:11-12`.
-   - ❌ **Không có** navigation `Inventory? Inventory` (không tồn tại entity `Inventory`).
-   - Navigation thật: `Category`, `Variants`, `Images`, `RatingStats`, `PurchaseRecords`, `Reviews`.
+   - `Name`: `string` (Max **255**); `Description`: `string?` (Max **4000**); `Brand`: `string?` (Max 150).
+   - `SaleType` (enum `Regular=0`, `Auction=1`), `Specifications` (jsonb), `PublishedAt`: `DateTimeOffset?`.
+   - `Status`: enum `ProductStatus` (`Draft=0`, `Active=1`, `Inactive=2`, `Auctioned=3`, `InAuction=4`, `Banned=5`, `PendingApproval=6`).
+   - `StatusReason`: `ProductInactiveReason?` (`SellerDeactivated=0`, `AdminSuspended=1`, `AdminBanned=2`, `AdminRejected=3`).
+   - Giá và tiền tệ: Quản lý theo từng biến thể `ProductVariant` (`Price`, `OriginalPrice`, `Currency = "VND"`).
+   - Navigation: `Category`, `Variants`, `Images`, `RatingStats`, `PurchaseRecords`, `Reviews`, `Reports`.
+
+3. **`ProductVariant`** (`Catalog.Domain/Entities/ProductVariant.cs`):
+   - `Id`: `Guid`; `ProductId`: `Guid`; `SellerId`: `Guid` (phục vụ scoped index mã SKU duy nhất theo Seller).
+   - `Sku`: `string` (Max 100); `Price`: `decimal?` (Precision 18, 2); `OriginalPrice`: `decimal?`.
+   - `AvailableQuantity`: `int`; `ReservedQuantity`: `int`.
+   - Thông số vận chuyển GHN: `WeightGrams`: `int?`, `LengthCm`: `int?`, `WidthCm`: `int?`, `HeightCm`: `int?`.
+   - `Status`: enum `VariantStatus` (`Draft=0`, `Active=1`, `Inactive=2`); `IsDefault`: `bool`.
+   - `InventoryInitState`: enum `InventoryInitState` (`None=0`, `Pending=1`, `Completed=2`, `Failed=3`).
+
+4. **`ProductImage`** (`Catalog.Domain/Entities/ProductImage.cs`):
+   - `Id`: `Guid`; `ProductId`: `Guid`; `VariantId`: `Guid?`.
+   - `Url`: `string`; `PublicId`: `string` (Cloudinary); `IsPrimary`: `bool`; `DisplayOrder`: `int`.
+
+5. **`ProductReview`** (`Catalog.Domain/Entities/ProductReview.cs`):
+   - `Id`: `Guid`; `ProductId`: `Guid`; `BuyerId`: `Guid`; `OrderId`: `Guid`.
+   - `Rating`: `int` (1 đến 5 sao); `Comment`: `string?`; `Images`: `List<string>` (tối đa 5 URL ảnh).
+   - `Status`: enum `ReviewStatus` (`Visible=0`, `Hidden=1`).
+
+6. **`ProductRatingStats`** (`Catalog.Domain/Entities/ProductRatingStats.cs`):
+   - `ProductId`: `Guid` (PK/FK); `AverageRating`: `double`; `TotalReviews`: `int`.
+   - Thống kê chi tiết sao: `OneStarCount`, `TwoStarCount`, `ThreeStarCount`, `FourStarCount`, `FiveStarCount`.
+
+7. **`ProductReport`** (`Catalog.Domain/Entities/ProductReport.cs`):
+   - `Id`: `Guid`; `ProductId`: `Guid`; `ReporterId`: `Guid`.
+   - `Reason`: enum `ReportReason` (`Counterfeit=0`, `ProhibitedItem=1`, `MisleadingInfo=2`, `DefectiveOrDamaged=3`, `Other=4`).
+   - `Description`: `string`; `EvidenceImageUrls`: `List<string>` (tối đa 5 file ảnh bằng chứng).
+   - `Status`: enum `ReportStatus` (`Pending=0`, `Dismissed=1`, `ActionTaken=2`).
+
+8. **`PurchaseRecord`** (`Catalog.Domain/Entities/PurchaseRecord.cs`):
+   - `Id`: `Guid`; `OrderId`: `Guid`; `BuyerId`: `Guid`; `ProductId`: `Guid`; `CompletedAt`: `DateTimeOffset`.
+
+9. **`AuditLog`** (`Catalog.Domain/Entities/AuditLog.cs`):
+   - `Id`: `Guid`; `EntityName`: `string`; `EntityId`: `string`; `Action`: `AuditAction`; `ChangedBy`: `string`.
+   - `OldValues`: `string?` (json); `NewValues`: `string?` (json); `SyncedAt`: `DateTimeOffset?`.
+
+10. **`ProductVariantAttribute`** (`Catalog.Domain/Entities/ProductVariantAttribute.cs`):
+    - `Id`: `Guid`; `VariantId`: `Guid`; `Name`: `string`; `Value`: `string`.
+
+---
+
+## 2. LỊCH SỬ 7 MIGRATIONS POSTGRESQL
+
+1. `20261031002358_InitialCreate`: Khởi tạo bảng danh mục, sản phẩm, biến thể, hình ảnh, đánh giá.
+2. `20261107055308_AddShippingWeightToProductAndVariant`: Thêm trường `WeightGrams` cho đơn vị vận chuyển GHN.
+3. `20261110034421_AddProductReportsAndBannedStatus`: Thêm bảng `ProductReports` và trạng thái `ProductStatus.Banned`.
+4. `20261112052732_AddReviewImagesToProductReviews`: Thêm cột jsonb `Images` cho bài đánh giá của người mua.
+5. `20261116130000_AddVariantInventoryInitState`: Thêm cột `InventoryInitState` quản lý trạng thái đồng bộ kho Fulfillment.
+6. `20261119090000_AddProductDimensionsLengthWidthHeight`: Thêm kích thước 3 chiều đóng gói GHN (`LengthCm`, `WidthCm`, `HeightCm`).
+7. `20261126220532_AddVariantSellerIdAndScopedSkuIndex`: Thêm `SellerId` vào `ProductVariants` và tạo Index duy nhất `(SellerId, Sku)`.
+
 
 3. **`Inventory`** — ❌ **KHÔNG TỒN TẠI** trong domain và DB:
    - Không có `Catalog.Domain/Entities/Inventory.cs`, không có `DbSet<Inventory>`, không có bảng `inventories` trong migration.

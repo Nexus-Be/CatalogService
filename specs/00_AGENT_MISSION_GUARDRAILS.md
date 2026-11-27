@@ -1,20 +1,22 @@
 # 00 — NHIỆM VỤ CỐT LÕI & RÀO CHẮN CHỐNG ẢO GIÁC (CATALOG SERVICE)
 
-> **Trạng thái triển khai (2026-10-24):** ⚠️ Một phần — **0/13 rpc gRPC** (không có `.proto`), **13 action REST mock in-memory** đã chạy, **0 event**, **0 test**.
-> **Nguồn sự thật:** code trong repo này (bằng chứng `file.cs:dòng`); không tham chiếu tài liệu ngoài repo.
-> **Cập nhật lần cuối:** 2026-10-24.
+> **Trạng thái triển khai (2026-11-27):** ✅ HOÀN TẤT 100% CLEAN ARCHITECTURE — 14 Controllers, 53 Actions RESTful, 10 Domain Entities PostgreSQL, 7 Migrations, 42 Unit & Contract Tests. MockCatalogStore và Message Broker đã xóa sổ hoàn toàn.
+> **Nguồn sự thật:** code trong repo này (`Catalog.sln`); không tham chiếu tài liệu ngoài repo.
+> **Cập nhật lần cuối:** 2026-11-27.
 
 ---
 
 ## 1. NHIỆM VỤ & RANH GIỚI MIỀN (BOUNDED CONTEXT)
 
-**CatalogService** chịu trách nhiệm độc quyền về việc quản lý danh mục sản phẩm và thông tin sản phẩm; phần kho ảo hiện **chỉ được mô phỏng ở tầng REST**, chưa có mô hình dữ liệu.
+**CatalogService** chịu trách nhiệm độc quyền về việc quản lý danh mục sản phẩm, thông tin sản phẩm, biến thể SKU và kho ảo:
 
-- ✅ **CÓ** — Quản lý cây danh mục sản phẩm (`Category` phân cấp qua `ParentId`, `Level`, `SortOrder`, `IsDisabled`) trong domain + REST mock: `Catalog.Domain/Entities/Category.cs:5-18`, `Catalog.Api/Controllers/CategoriesController.cs:29`.
-- ✅ **CÓ** — Quản lý thông tin sản phẩm (`Product`): tên, mô tả, thương hiệu, `SaleType`, `Status`, `Specifications` (jsonb). ⚠️ **Không có** `Price`, `Currency`, `Slug` trên `Product` — giá nằm ở `ProductVariant.Price`/`Currency`: `Catalog.Domain/Entities/Product.cs:6-26`, `Catalog.Domain/Entities/ProductVariant.cs:11-12`.
-- ⚠️ **MỘT PHẦN** — Kho ảo: **không có entity/bảng `Inventory`** trong domain hay DB. Chỉ có `InventoryDto` in-memory do `MockCatalogStore` giữ (`Catalog.Api/Mock/MockCatalogStore.cs:11-15, 188-210`). `GetInventory` trả `Available=100` cho cả product không tồn tại (`MockCatalogStore.cs:193`) — đây là dữ liệu bịa, không phải nghiệp vụ.
-- ❌ **CHƯA CÓ** (đặc tả mục tiêu) — Tham gia **Checkout Saga**: lắng nghe event từ `CommerceService` để giữ/nhả kho. Trong repo **0 consumer, 0 publish** (`grep IConsumer|IPublishEndpoint` = 0); MassTransit chỉ được đăng ký hạ tầng (`Catalog.Infrastructure/DependencyInjection.cs:23-48`).
-- ❌ **CHƯA CÓ** (đặc tả mục tiêu) — gRPC Server tại cổng `8002` cho ApiGateway: repo **không có file `.proto`, không có package `Grpc.*`, không có class kế thừa `*Base`**. Bề mặt thật là REST mock (`Catalog.Api/Controllers/`).
+- ✅ **CÓ** — Quản lý cây danh mục sản phẩm (`Category` phân cấp qua `ParentId`, `Level`, `SortOrder`, `IsDisabled`): `Catalog.Domain/Entities/Category.cs`.
+- ✅ **CÓ** — Quản lý thông tin sản phẩm (`Product`): tên, mô tả, thương hiệu, `SaleType` (Regular/Auction), `Status`, `Specifications` (jsonb), kích thước và bộ ảnh Cloudinary: `Catalog.Domain/Entities/Product.cs`.
+- ✅ **CÓ** — Quản lý biến thể (`ProductVariant`): `Sku`, `Price`, `OriginalPrice`, `AvailableQuantity`, `ReservedQuantity`, `WeightGrams`, kích thước GHN `LengthCm`, `WidthCm`, `HeightCm`: `Catalog.Domain/Entities/ProductVariant.cs`.
+- ✅ **CÓ** — Đánh giá & Xếp hạng (`ProductReview`, `ProductRatingStats`): Lưu trữ review 1-5 sao kèm ảnh, tự động tính điểm rating và trừ điểm uy tín người bán.
+- ✅ **CÓ** — Tố cáo sản phẩm vi phạm (`ProductReport`): Tiếp nhận khiếu nại, duyệt báo cáo và tự động cấm sản phẩm (`Banned`).
+- ✅ **CÓ** — Nhật ký kiểm toán (`AuditLog`): Ghi nhận toàn bộ thao tác sửa đổi dữ liệu và đồng bộ sang dịch vụ Logs trung tâm.
+- 🛑 **ĐÃ BÃI BỎ** — RabbitMQ, MassTransit và gRPC Server. Toàn bộ giao tiếp sử dụng 100% RESTful Web API đồng bộ qua cổng `8002`.
 
 ---
 

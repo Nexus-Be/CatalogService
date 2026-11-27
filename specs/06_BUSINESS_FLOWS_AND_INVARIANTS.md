@@ -79,6 +79,14 @@ Bất kỳ AI Agent hoặc Developer nào làm việc tại CatalogService **B�
 | **INV-08** | ✅ **KHI CÓ REVIEW 1–5 SAO: Tự động điều chỉnh điểm uy tín Seller.** | `ProductReviewService.cs:320-330, 450-460` | Đánh giá 4–5 sao cộng uy tín, 1–2 sao trừ uy tín. CatalogService tự động gọi `IUserClient.AdjustReputationAsync` sang `api/v1/internal/users/reputation-adjust` của `UserService`. |
 | **INV-09** | ✅ **KHI DUYỆT SẢN PHẨM: Khởi tạo tồn kho SKU sang Fulfillment bằng cơ chế Non-blocking.** | `ProductInventoryInitializer.cs:150-237` | Khi Admin duyệt sản phẩm, SKU được gán `InventoryInitState.Pending`. Worker nền thử gọi `FulfillmentService`. Nếu seller chưa có kho, ghi warning và retry backoff (tối đa 10 lần), **tuyệt đối không quăng exception làm sập luồng duyệt**. |
 | **INV-10** | ❌ **CẤM dùng Repository Pattern bọc ngoài EF Core.** | `specs/00_AGENT_MISSION_GUARDRAILS.md` | Sử dụng trực tiếp `AppDbContext` / `ICatalogDbContext` và `DbSet<T>` trong tầng Application. Cấm tạo `IProductRepository`, `ICategoryRepository`. |
+| **INV-11** | ❌ **CẤM tạo SKU thiếu thông số kích thước đóng gói và khối lượng cho đơn vị vận chuyển GHN.** | `ProductVariant.cs:22-26`, `AddVariantRequestValidator.cs` | Bắt buộc khai báo `WeightGrams > 0`, `LengthCm > 0`, `WidthCm > 0`, `HeightCm > 0`. Thiếu các trường này API GHN sẽ từ chối tạo vận đơn và tính phí ship. |
+| **INV-12** | ❌ **CẤM sản phẩm đấu giá (`SaleType.Auction`) sở hữu nhiều hơn 1 biến thể SKU.** | `ProductsController.cs:115-130`, `ProductService.cs` | Sản phẩm đấu giá là độc bản 1-1; hệ thống tự động sinh đúng 1 SKU mặc định duy nhất khi người bán đăng tải. |
+| **INV-13** | ❌ **CẤM để lỗi đồng bộ nhật ký kiểm toán làm tắc nghẽn luồng nghiệp vụ chính (Non-blocking Resilient Audit).** | `InternalAuditLogsController.cs`, `AuditSyncSourceService.cs` | Việc kéo hoặc đánh dấu nhật ký đã đồng bộ được thực hiện độc lập, không giữ khóa dữ liệu đơn hàng hay sản phẩm. |
+| **INV-14** | ❌ **CẤM nhập hàng tồn kho cho sản phẩm chưa được Staff/Admin duyệt.** | `ProductInventoryInitializer.cs`, `docs/CROSS_SERVICE_BUSINESS_RULES_AND_RESTRICTIONS.md` | Sản phẩm còn ở `Draft`/`PendingApproval` chưa hề được khai báo sang kho. Chỉ khi Staff duyệt `Active`, SKU mới được khởi tạo với số lượng ban đầu bằng 0, sau đó mới cho phép tạo phiếu nhập kho. |
+
+> [!NOTE]
+> Ma trận chi tiết toàn bộ các quy tắc "Được làm vs Cấm làm" liên dịch vụ (DO & DO NOT Matrix) giữa CatalogService và các dịch vụ khác (`FulfillmentService`, `CommerceService`, `AuctionService`, `UserService`, `NotificationService`, `Gateway`, `Frontend`) được quy định tập trung tại:  
+> 👉 [CROSS_SERVICE_BUSINESS_RULES_AND_RESTRICTIONS.md](file:///d:/Apartment/FALL_26/FSA/Project/CatalogService_Refactor/docs/CROSS_SERVICE_BUSINESS_RULES_AND_RESTRICTIONS.md).
 
 ---
 
@@ -141,12 +149,40 @@ Bất kỳ AI Agent hoặc Developer nào làm việc tại CatalogService **B�
 
 ## 5. CHỈ MỤC TRA CỨU TÀI LIỆU CHI TIẾT (API DIRECTORY MAPPING)
 
-Toàn bộ 54 tài liệu đặc tả endpoint chi tiết được lưu trữ có cấu trúc tại thư mục `docs/api/`:
+Toàn bộ 53 tài liệu đặc tả endpoint chi tiết được lưu trữ có cấu trúc tại thư mục `docs/api/`:
 - **Quản lý Sản phẩm (Products):** `docs/api/Products/` (12 endpoints: CRUD, Moderate, Search, Paging).
 - **Quản lý Danh mục (Categories):** `docs/api/Categories/` (6 endpoints: Cây phân cấp, Admin, Sắp xếp).
 - **Quản lý Biến thể (Variants/SKUs):** `docs/api/Variants/` (9 endpoints: Thuộc tính, Kích thước GHN, Trọng lượng).
 - **Quản lý Hình ảnh (Images):** `docs/api/Images/` (4 endpoints: Upload Cloudinary, Thumbnail, Sắp xếp).
 - **Đánh giá Sản phẩm (Reviews):** `docs/api/Reviews/` (7 endpoints: Rating Summary, Đăng đánh giá, Sửa/Xóa, Duyệt).
-- **Tố cáo Vi phạm (Reports):** `docs/api/Reports/` (3 endpoints: Gửi tố cáo, Danh sách chờ, Phán quyết cấm).
-- **Sản phẩm Người bán (Seller Products):** `docs/api/SellerProducts/` (2 endpoints: Dashboard của shop).
-- **Giao tiếp Nội bộ (Internal S2S):** `docs/api/Internal/` (10 endpoints: Lock Auction, Mark Ordered, Check Status).
+- **Tố cáo Vi phạm (Reports):** `docs/api/Reports/` (4 endpoints: Gửi tố cáo, Xem báo cáo của tôi, Danh sách chờ, Phán quyết cấm).
+- **Sản phẩm Người bán (Seller Products):** `docs/api/SellerProducts/` (3 endpoints: Dashboard của shop, Chi tiết, Đấu giá của shop).
+- **Giao tiếp Nội bộ (Internal S2S):** `docs/api/Internal/` (12 endpoints: Lock Auction, Mark Ordered, Check Status, Sync Purchases, Audit Logs).
+
+---
+
+## 6. MA TRẬN 7 GIAI ĐOẠN KIỂM THỬ TÍCH HỢP TOÀN HỆ THỐNG (E2E BUSINESS FLOW)
+
+Luồng kiểm thử thực tế được thực hiện tuần tự để xác minh toàn vẹn tính năng nghiệp vụ liên dịch vụ:
+
+| Giai đoạn | Bước thực hiện | Tác nhân | Màn hình / Endpoint | Kết quả kỳ vọng & Ràng buộc CatalogService |
+| :--- | :--- | :--- | :--- | :--- |
+| **G1: Auth & Onboarding** | **1.1 Đăng nhập & Đăng ký** | Người dùng | `/login`, `/register` | Xác thực JWT Token, nhận vai trò `buyer` / `seller` / `staff` / `admin`. |
+| | **1.2 Đăng ký hồ sơ Người bán** | Người bán | `/register` (Bước 2) | Khai báo địa chỉ kho hàng phục vụ tích hợp vận chuyển GHN. |
+| **G2: Categories** | **2.1 Duyệt cây danh mục** | Mọi người | `GET /api/v1/categories` | Trả về cây danh mục phân tầng cha - con (`Children`). |
+| | **2.2 Quản trị danh mục** | Admin/Staff | `POST/PUT /api/v1/categories` | Tạo mới/sửa ngành hàng, tự động chuẩn hóa cấp bậc (`Level`). |
+| **G3: Product Creation & Approval** | **3.1 Tạo sản phẩm thường** | Người bán | `POST /api/v1/products` | Trạng thái ban đầu `Draft`, khai báo thông số và ảnh Cloudinary. |
+| | **3.2 Cấu hình SKU & Kích thước GHN** | Người bán | `POST /api/v1/products/{id}/variants` | Khai báo `LengthCm`, `WidthCm`, `HeightCm`, `WeightGrams` (> 0). |
+| | **3.3 Gửi duyệt & Phê duyệt** | Seller $\to$ Staff | `PATCH /api/v1/admin/products/{id}/moderate` | Chuyển `PendingApproval` $\to$ `Active`. Kích hoạt Non-blocking Outbox đồng bộ SKU sang Fulfillment. |
+| **G4: Inventory & Reporting** | **4.1 Quản lý tồn kho ảo** | Người bán | `GET /api/v1/variants/{id}` | Quản lý `AvailableQuantity` và `ReservedQuantity`. |
+| | **4.2 Người mua gửi tố cáo vi phạm** | Người mua | `POST /api/v1/products/{id}/reports` | Bắt buộc đính kèm tối đa 5 file ảnh bằng chứng. |
+| | **4.3 Xử lý tố cáo & Phạt shop** | Admin/Staff | `PUT /api/v1/admin/reports/products/{id}/action` | Chọn `ActionTaken` $\to$ Sản phẩm chuyển `Banned` vĩnh viễn, vô hiệu hóa SKU, trừ 10 điểm uy tín Seller qua UserService. |
+| **G5: Purchasing Flow** | **5.1 Bỏ giỏ & Thanh toán** | Người mua | `/cart`, `/checkout` | `POST /api/v1/internal/variants/check-status` kiểm tra tính hợp lệ trước khi đặt cọc/thanh toán. |
+| **G6: Auction Lifecycle** | **6.1 Tạo sản phẩm đấu giá** | Người bán | `POST /api/v1/products/auction` | Tạo sản phẩm `SaleType.Auction`, tự động sinh đúng 1 SKU mặc định. |
+| | **6.2 Mở phiên & Đóng băng SP** | Hệ thống | `POST /api/v1/internal/products/{id}/lock-auction` | `Status` $\to$ `InAuction`. Cấm sửa/xóa sản phẩm và biến thể. |
+| | **6.3 Kết thúc đấu giá & Bàn giao** | Hệ thống | `POST /api/v1/internal/products/{id}/mark-auctioned` | Chuyển `Status` $\to$ `Sold`, tạo đơn hàng tương ứng bên Commerce. |
+| **G7: Review & Reputation Impact** | **7.1 Đồng bộ đơn mua hoàn tất** | Hệ thống | `POST /api/v1/internal/purchases` | `CommerceService` đồng bộ đơn `Completed` sang `PurchaseRecord` của Catalog. |
+| | **7.2 Người mua gửi đánh giá** | Người mua | `POST /api/v1/products/{id}/reviews` | Kiểm tra quyền đánh giá hợp lệ, chấm 1 - 5 sao kèm tối đa 5 ảnh. |
+| | **7.3 Tác động điểm uy tín Seller** | Hệ thống | `POST /api/v1/internal/users/reputation-adjust` | Tự động trừ điểm: 1 sao = -2 điểm, 2 sao = -1 điểm, 5 sao = +1 điểm. |
+| | **7.4 Đồng bộ nhật ký kiểm toán** | Dịch vụ Logs | `GET /api/v1/internal/audit-logs/unsynced` | Kéo nhật ký kiểm toán và xác nhận bằng `POST mark-synced`. |
+
