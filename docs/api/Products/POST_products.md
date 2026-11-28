@@ -32,9 +32,9 @@ public sealed record ProductSpecificationDto(string Name, string Value);
 public sealed record CreateVariantAttributeRequest(string AttrName, string AttrValue);
 
 public sealed record CreateVariantRequest(
-    string SkuCode,
-    string Name,
-    decimal Price,
+    string? SkuCode = null,
+    string Name = "",
+    decimal Price = 0,
     string? Currency = "VND",
     List<CreateVariantAttributeRequest>? Attributes = null);
 
@@ -67,6 +67,7 @@ public sealed record CreateProductRequest(
 > 2. **`sellerId`:** **Không cần gửi.** Backend tự trích xuất từ JWT Token của Seller.
 > 3. **`specifications`:** **Tùy chọn.** Nếu người dùng không nhập, bỏ qua trường này hoặc gửi `null` / `[]`.
 > 4. **`variants`:** **Tùy chọn.** FE có thể tạo sản phẩm trước (mẫu tối giản) rồi mới gọi `POST /api/v1/products/{id}/variants` để thêm từng biến thể, HOẶC gom tạo cùng lúc trong 1 bước (mẫu đầy đủ).
+> 5. **`skuCode` (trong từng biến thể):** **Tùy chọn.** Người bán có thể nhập mã SKU tùy chỉnh, hoặc bấm nút gọi `GET /api/v1/seller/products/suggest-sku` để máy chủ tự sinh mã chuẩn điền vào ô input. Nếu người bán để trống (`null` hoặc `""`), Backend sẽ tự động sinh mã duy nhất trong database khi lưu.
 
 ### 2.3 JSON Request Body Mẫu
 

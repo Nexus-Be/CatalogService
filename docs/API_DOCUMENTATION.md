@@ -1099,3 +1099,14 @@
 - **Mô tả:** Xác nhận hoàn tất lưu trữ nhật ký tại dịch vụ Logs trung tâm để chuyển trạng thái `IsSynced = true`.
 - **Tài liệu chi tiết:** Xem [`POST_internal_audit_logs_mark_synced.md`](api/Internal/POST_internal_audit_logs_mark_synced.md).
 
+---
+
+### API 54. `GET /api/v1/seller/products/suggest-sku` — Gợi ý mã SKU duy nhất cho biến thể sản phẩm [CAT-69]
+- **Quyền hạn:** `[RequireRole("seller", "admin")]` (Bắt buộc header xác thực người bán `X-User-Id` và `X-User-Roles`).
+- **Endpoint Route:** `/api/v1/seller/products/suggest-sku?name={productName}&variantName={variantName}`
+- **Controller:** `Catalog.Api.Controllers.Public.SellerProductsController.SuggestSku`
+- **Query Parameters:** `name` (`string?`, tên sản phẩm), `variantName` (`string?`, tên biến thể).
+- **Mô tả:** Sinh mã SKU chuẩn hóa (khử dấu tiếng Việt, chữ in hoa, hậu tố 4 ký tự hex) và đối soát trực tiếp trong database của chính người bán (`currentUserId`) để đảm bảo không bao giờ trùng lặp trong shop. Hỗ trợ Frontend bố trí nút bấm "Tạo mã SKU" để người bán xem trước và xác nhận trước khi lưu sản phẩm.
+- **Tài liệu chi tiết:** Xem [`GET_seller_products_suggest_sku.md`](api/Products/GET_seller_products_suggest_sku.md).
+
+

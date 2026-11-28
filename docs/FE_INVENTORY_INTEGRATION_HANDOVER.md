@@ -260,48 +260,144 @@ Backend CatalogService hiện đã hoạt động đồng bộ với Fulfillment
 
 ---
 
-## 5. Bổ sung: Cơ chế Tự sinh mã SKU (SKU Auto-generation) & Endpoint Gợi ý SKU Mới
+## 5. Bổ sung: Cơ chế Gợi ý Mã SKU qua Nút Bấm & Tự Động Sinh Mã Từ Backend
 
-### 5.1. Lý do & Hiện trạng tester ghi nhận
-- Trước đây, trang tạo sản phẩm ở Frontend tự sinh mã SKU bằng JavaScript (`buildAutoSku`) sử dụng `Math.random()`. Do FE không có cơ sở dữ liệu, việc tự sinh ở client có nguy cơ bị **trùng mã SKU (duplicate)** với các sản phẩm đã có của Seller, dẫn đến lỗi `DUPLICATE_SKU (409 Conflict)`.
-- Backend CatalogService trước đây cũng bắt buộc `skuCode` không được rỗng, khiến FE bắt buộc phải gửi mã lên.
+### 5.1. Lý do & Hiện trạng Tester Ghi Nhận
+- **Vấn đề trên giao diện FE:** Trước đây, trang tạo sản phẩm ở Frontend tự sinh mã SKU bằng hàm JavaScript nội bộ (`buildAutoSku`) kết hợp `Math.random()`. Do Frontend không có cơ sở dữ liệu để đối soát, việc sinh mã ngẫu nhiên ở client có nguy cơ cao bị **trùng mã SKU (duplicate)** với các sản phẩm/biến thể đã tồn tại của Seller trong hệ thống, dẫn đến lỗi `DUPLICATE_SKU (409 Conflict)` khi lưu.
+- **Vấn đề ở Backend:** Backend CatalogService trước đây bắt buộc trường `skuCode` không được để trống trong `CreateVariantRequest`, khiến FE buộc phải tự tạo mã rồi gửi lên.
 
-### 5.2. Thay đổi đã triển khai tại Backend CatalogService (Đã Live trên nhánh `dev`)
+---
 
-#### A. Cho phép để trống `skuCode` khi Tạo sản phẩm & Thêm biến thể
-- Tại `POST /api/v1/products` và `POST /api/v1/products/{id}/variants`:
-  - Trường `skuCode` nay là **TÙY CHỌN (Optional)**.
-  - **Nếu Seller tự nhập SKU tùy chỉnh**: Backend vẫn tôn trọng và kiểm tra tính duy nhất trong shop như bình thường (`EnsureUniqueSkuInShopAsync`).
-  - **Nếu Seller để trống SKU (`null`, `""`, hoặc khoảng trắng)**: Backend sẽ **tự động sinh mã SKU chuẩn** (dạng `[TÊN_SP]-[BIẾN_THỂ]-[HẬU_TỐ]`, ví dụ: `GOI-OM-XAM-BF78`). Backend truy vấn trực tiếp vào DB để **đảm bảo 100% không bao giờ bị trùng trong shop**.
+### 5.2. Giải pháp Kiến trúc: Kết Hợp Nút Bấm Gợi Ý Trực Quan + Cơ Chế Dự Phòng Tự Sinh
 
-#### B. Endpoint mới: Gợi ý mã SKU thời gian thực (Real-time Preview API)
-- **Phương thức & Route:** `GET /api/v1/seller/products/suggest-sku`
-- **Quyền hạn (RBAC):** `seller` hoặc `admin` (yêu cầu header xác thực user).
+Thay vì chỉ để trống trường SKU và ngầm tạo ở Backend khiến người bán không nắm được mã sản phẩm của mình, CatalogService đã triển khai **mô hình kết hợp 2 lớp (Two-tier SKU Strategy)**:
+
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ Giao diện Người bán (Seller Frontend)                                           │
+│                                                                                │
+│ [Tên SP: "Gối ôm công thái học"]                                              │
+│ [Tên biến thể: "Màu xám"]                                                      │
+│                                                                                │
+│ [Mã SKU: ____________________ ]  [ ⚡ Tạo mã SKU ] (Nút bấm gọi BE API)         │
+│                                        │                                       │
+│                                        ▼                                       │
+│                    GET /api/v1/seller/products/suggest-sku                     │
+│                                        │                                       │
+│                                        ▼                                       │
+│ [Mã SKU: GOI-OM-CONG-MAU-XAM-BF78] ◄───┘ (Điền ngay vào ô input)              │
+│ (Người bán nhìn thấy rõ, có thể giữ nguyên hoặc sửa đổi tùy ý)                │
+└────────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼ Khi bấm [Lưu sản phẩm]
+┌────────────────────────────────────────────────────────────────────────────────┐
+│ Backend CatalogService (Lớp bảo vệ kép)                                        │
+│                                                                                │
+│ • Trường hợp 1: Người bán đã có SKU (tự nhập hoặc lấy từ nút gợi ý)           │
+│   ──► Backend kiểm tra tính duy nhất trong shop.                               │
+│                                                                                │
+│ • Trường hợp 2: Người bán để trống SKU (null / "")                             │
+│   ──► Backend tự động sinh mã duy nhất đối soát trực tiếp DB (Safety Net).    │
+│   ──► Đảm bảo không bao giờ bị lỗi validation hoặc trùng lặp.                  │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 5.3. Chi tiết Endpoint Mới: Gợi ý Mã SKU (Suggest SKU API)
+
+- **HTTP Method & Route:** `GET /api/v1/seller/products/suggest-sku`
+- **Quyền hạn (RBAC):** `[RequireRole("seller", "admin")]` (Bắt buộc Token hoặc header định danh người bán `X-User-Id`).
 - **Query Parameters:**
-  - `name` (optional): Tên sản phẩm (ví dụ: `Gối ôm công thái học`).
-  - `variantName` (optional): Tên biến thể (ví dụ: `Màu xám`).
-- **Response (200 OK):**
+  | Tham số | Kiểu | Bắt buộc | Mô tả |
+  | :--- | :---: | :---: | :--- |
+  | `name` | `string` | Không | Tên sản phẩm chính (Ví dụ: `Gối ôm công thái học`). |
+  | `variantName` | `string` | Không | Tên của biến thể (Ví dụ: `Màu xám` hoặc `Size XL`). |
+- **Cơ chế sinh mã của Backend:**
+  1. Chuẩn hóa tiếng Việt có dấu thành không dấu, loại bỏ ký tự đặc biệt, chuyển thành chữ in hoa cách nhau bởi dấu gạch ngang (`-`).
+  2. Lấy tối đa 3 từ đầu của tên sản phẩm và 2 từ đầu của tên biến thể.
+  3. Thêm hậu tố ngẫu nhiên an toàn 4 ký tự Hex/GUID (ví dụ: `BF78`).
+  4. **Kiểm tra trực tiếp trong Database** xem mã này đã thuộc về Seller hay chưa. Nếu đã có, hệ thống tự động sinh lại hậu tố khác cho đến khi đảm bảo **100% duy nhất trong shop**.
+- **Cấu trúc Dữ liệu Phản hồi (200 OK):**
   ```json
   {
     "skuCode": "GOI-OM-CONG-MAU-XAM-BF78"
   }
   ```
-  *(Mã SKU trả về đã được Backend kiểm tra đối chiếu trực tiếp với database và bảo đảm không trùng lặp với bất kỳ SKU nào khác trong shop).*
 
-### 5.3. Hướng dẫn cập nhật phía Frontend (`src/features/seller/SellerScreens.tsx`)
-1. **Bỏ bắt buộc nhập SKU**:
-   - Ở form tạo biến thể, bỏ dấu hoa thị bắt buộc `*` tại nhãn "Mã SKU".
-   - Placeholder có thể đổi thành: `"Tùy chọn: Để trống để hệ thống tự tạo mã duy nhất"`.
-2. **Nút "+" (Gợi ý mã SKU)**:
-   - Thay vì gọi hàm `buildAutoSku(...)` bằng JavaScript nội bộ của FE, FE có thể gọi:
-     ```typescript
-     const res = await api.get<{ skuCode: string }>(
-       `/api/v1/seller/products/suggest-sku?name=${encodeURIComponent(name)}&variantName=${encodeURIComponent(variant.name)}`
-     );
-     updateVariantField(vIdx, "skuCode", res.skuCode);
-     ```
-3. **Payload khi Submit form**:
-   - Nếu người dùng không nhập mã SKU, FE có thể gửi `skuCode: ""` hoặc bỏ qua trường này, Backend sẽ tự sinh và trả về mã SKU hoàn chỉnh trong đối tượng variant được tạo.
+---
+
+### 5.4. Hướng dẫn Tích hợp Cụ thể cho Frontend (`src/features/seller/SellerScreens.tsx`)
+
+Phía Frontend đã có sẵn cấu trúc Input Group kèm nút bấm `+` (`data-test="seller-sku-generate"`) tại dòng 1195–1216 trong `SellerScreens.tsx`. FE chỉ cần kết nối nút này tới endpoint mới thay vì gọi hàm `buildAutoSku` cũ.
+
+#### Bước 1: Bổ sung hàm gọi API gợi ý SKU vào Service của Frontend
+Trong file quản lý API của Seller (ví dụ `sellerCatalogService.ts` hoặc tương đương):
+```typescript
+export async function suggestSkuCode(productName?: string, variantName?: string): Promise<string> {
+  const params = new URLSearchParams();
+  if (productName?.trim()) params.append("name", productName.trim());
+  if (variantName?.trim()) params.append("variantName", variantName.trim());
+
+  const queryString = params.toString() ? `?${params.toString()}` : "";
+  const response = await api.get<{ skuCode: string }>(`/api/v1/seller/products/suggest-sku${queryString}`);
+  return response.skuCode;
+}
+```
+
+#### Bước 2: Cập nhật sự kiện bấm nút tại `SellerScreens.tsx`
+Thay thế logic sinh SKU cũ bằng việc gọi API:
+```tsx
+// Hàm xử lý khi người bán bấm nút tạo mã SKU cho biến thể tại chỉ mục vIdx:
+const handleGenerateSku = async (vIdx: number) => {
+  try {
+    const targetVariant = variants[vIdx];
+    const suggestedSku = await suggestSkuCode(name, targetVariant.name);
+    updateVariantField(vIdx, "skuCode", suggestedSku);
+  } catch (error) {
+    console.error("Không thể lấy mã SKU từ máy chủ:", error);
+    // Tùy chọn: fallback nhẹ tại client nếu mất kết nối mạng
+  }
+};
+
+// Giao diện ô nhập SKU kèm nút bấm tạo mã:
+<div className="form-group">
+  <label htmlFor={`sku-${vIdx}`}>
+    Mã SKU <span className="text-muted" style={{ fontWeight: "normal", fontSize: "12px" }}>(Tùy chọn)</span>
+  </label>
+  <div className="input-group">
+    <input
+      id={`sku-${vIdx}`}
+      type="text"
+      className="form-control"
+      placeholder="Nhập mã hoặc bấm nút để tạo tự động"
+      value={variant.skuCode}
+      onChange={(e) => updateVariantField(vIdx, "skuCode", e.target.value)}
+    />
+    <button
+      type="button"
+      className="button button-outline"
+      title="Bấm để máy chủ tạo mã SKU duy nhất không trùng lặp"
+      data-test="seller-sku-generate"
+      onClick={() => void handleGenerateSku(vIdx)}
+    >
+      ⚡ Tạo mã SKU
+    </button>
+  </div>
+</div>
+```
+
+#### Bước 3: Payload gửi khi Submit Form Tạo / Cập nhật Sản phẩm
+- **Khi gửi `POST /api/v1/products` hoặc `POST /api/v1/products/{id}/variants`:**
+  - Nếu trường `skuCode` có giá trị: Gửi chuỗi giá trị đó lên.
+  - Nếu người bán để trống `skuCode` (hoặc gửi `null`, `""`): Backend tự động sinh mã SKU duy nhất trong DB và gán cho biến thể. Form submit thành công 100% mà không bị chặn.
+
+---
+
+### 5.5. Tổng kết Lợi ích của Giải pháp
+1. **Minh bạch & Trực quan (Visibility):** Người bán nhìn thấy rõ mã SKU của từng biến thể ngay trên màn hình trước khi lưu, có thể sao chép hoặc ghi nhớ.
+2. **Không lo trùng mã (Zero Collision):** Mã được đối soát thời gian thực với database của chính người bán đó.
+3. **Trải nghiệm an toàn (Safe UX):** Nếu người bán vô tình bỏ qua ô này, Backend tự động sinh mã an toàn thay vì ném lỗi khiến người bán phải điền lại từ đầu.
 
 ---
 
