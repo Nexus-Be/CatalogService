@@ -41,6 +41,12 @@ public record InventoryClientResponse(
     int ReservedQuantity,
     int AvailableQuantity);
 
+public sealed record SkuStockBalanceDto(
+    Guid SkuId,
+    int TotalQuantity,
+    int AvailableQuantity,
+    int ReservedQuantity);
+
 public interface IFulfillmentClient
 {
     /// <summary>
@@ -77,5 +83,13 @@ public interface IFulfillmentClient
     /// </summary>
     Task<InventoryClientResponse?> InitializeInventoryAsync(
         InitializeInventoryClientRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches aggregated inventory stock balances for a collection of SKU IDs in a single batch.
+    /// Returns an empty dictionary if the downstream call fails (graceful degradation).
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, SkuStockBalanceDto>> GetStockBalancesAsync(
+        IReadOnlyList<Guid> skuIds,
         CancellationToken cancellationToken = default);
 }

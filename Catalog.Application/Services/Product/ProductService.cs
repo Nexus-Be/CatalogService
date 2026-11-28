@@ -196,18 +196,29 @@ public sealed class ProductService : IProductService
             })
             .ToListAsync(cancellationToken);
 
-        var items = rows.Select(r => new ProductListItemDto(
-            r.Id,
-            r.SellerId,
-            r.CategoryId,
-            r.Name,
-            r.Brand,
-            r.SaleType.ToString(),
-            r.Status.ToString(),
-            r.MinPrice,
-            r.MaxPrice,
-            r.PrimaryImageUrl,
-            r.AvgRating)).ToList();
+        var productStock = await LoadStockForProductsAsync(
+            rows.Select(r => r.Id).ToList(),
+            activeVariantsOnly: true,
+            cancellationToken);
+
+        var items = rows.Select(r =>
+        {
+            var (total, available, _) = productStock.TryGetValue(r.Id, out var s) ? s : (0, 0, 0);
+            return new ProductListItemDto(
+                r.Id,
+                r.SellerId,
+                r.CategoryId,
+                r.Name,
+                r.Brand,
+                r.SaleType.ToString(),
+                r.Status.ToString(),
+                r.MinPrice,
+                r.MaxPrice,
+                r.PrimaryImageUrl,
+                r.AvgRating,
+                total,
+                available);
+        }).ToList();
 
         return new PagedData<ProductListItemDto>(items, PaginationMetadata.Create(safePage, safePageSize, totalCount));
     }
@@ -274,7 +285,9 @@ public sealed class ProductService : IProductService
                     v.WeightGrams ?? p.WeightGrams,
                     v.LengthCm ?? p.LengthCm,
                     v.WidthCm ?? p.WidthCm,
-                    v.HeightCm ?? p.HeightCm
+                    v.HeightCm ?? p.HeightCm,
+                    0,
+                    0
                 )).ToList(),
                 Images = p.Images.Where(i => !i.IsDeleted).OrderBy(i => i.SortOrder).Select(i => new ProductDetailImageDto(
                     i.Id,
@@ -292,6 +305,25 @@ public sealed class ProductService : IProductService
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw new EntityNotFoundException("PRODUCT_NOT_FOUND", "Product", id);
 
+        var skuIds = row.Variants.Select(v => v.VariantId).Distinct().ToList();
+        var stockMap = await SafeGetStockBalancesAsync(skuIds, cancellationToken);
+
+        var enrichedVariants = row.Variants.Select(v =>
+        {
+            var (total, available) = stockMap.TryGetValue(v.VariantId, out var b)
+                ? (b.TotalQuantity, b.AvailableQuantity)
+                : (0, 0);
+
+            return v with
+            {
+                TotalQuantity = total,
+                AvailableQuantity = available
+            };
+        }).ToList();
+
+        var productTotal = enrichedVariants.Sum(v => v.TotalQuantity);
+        var productAvailable = enrichedVariants.Sum(v => v.AvailableQuantity);
+
         return new ProductDetailDto(
             row.Id,
             row.SellerId,
@@ -303,13 +335,87 @@ public sealed class ProductService : IProductService
             ProductSpecificationHelper.Deserialize(row.Specifications),
             row.PublishedAt,
             row.Category,
-            row.Variants,
+            enrichedVariants,
             row.Images,
             row.Rating,
             row.WeightGrams,
             row.LengthCm,
             row.WidthCm,
-            row.HeightCm);
+            row.HeightCm,
+            productTotal,
+            productAvailable);
+    }
+
+    private async Task<Dictionary<Guid, (int Total, int Available, int Reserved)>> LoadStockForProductsAsync(
+        IReadOnlyList<Guid> productIds,
+        bool activeVariantsOnly,
+        CancellationToken cancellationToken)
+    {
+        if (productIds == null || productIds.Count == 0)
+        {
+            return new Dictionary<Guid, (int Total, int Available, int Reserved)>();
+        }
+
+        var query = _dbContext.ProductVariants
+            .AsNoTracking()
+            .Where(v => productIds.Contains(v.ProductId) && !v.IsDeleted);
+
+        if (activeVariantsOnly)
+        {
+            query = query.Where(v => v.Status == VariantStatus.Active);
+        }
+
+        var variants = await query
+            .Select(v => new { v.ProductId, v.Id })
+            .ToListAsync(cancellationToken);
+
+        if (variants.Count == 0)
+        {
+            return new Dictionary<Guid, (int Total, int Available, int Reserved)>();
+        }
+
+        var skuIds = variants.Select(v => v.Id).Distinct().ToList();
+        var stockMap = await SafeGetStockBalancesAsync(skuIds, cancellationToken);
+
+        return variants
+            .GroupBy(v => v.ProductId)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    int total = 0, available = 0, reserved = 0;
+                    foreach (var v in g)
+                    {
+                        if (stockMap.TryGetValue(v.Id, out var b))
+                        {
+                            total += b.TotalQuantity;
+                            available += b.AvailableQuantity;
+                            reserved += b.ReservedQuantity;
+                        }
+                    }
+                    return (Total: total, Available: available, Reserved: reserved);
+                });
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, SkuStockBalanceDto>> SafeGetStockBalancesAsync(
+        IReadOnlyList<Guid> skuIds,
+        CancellationToken cancellationToken)
+    {
+        if (skuIds == null || skuIds.Count == 0)
+        {
+            return new Dictionary<Guid, SkuStockBalanceDto>();
+        }
+
+        try
+        {
+            return (await _fulfillmentClient.GetStockBalancesAsync(skuIds, cancellationToken))
+                ?? new Dictionary<Guid, SkuStockBalanceDto>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[InventoryEnrichment] Failed to fetch inventory stock balances from FulfillmentService. Defaulting to 0.");
+            return new Dictionary<Guid, SkuStockBalanceDto>();
+        }
     }
 
     private async Task ValidateSellerPermissionAsync(Guid sellerId, CancellationToken cancellationToken)
@@ -1541,6 +1647,11 @@ public sealed class ProductService : IProductService
             ?? variant.Product?.Images.Where(i => !i.IsDeleted && i.IsActive).OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault()
             ?? DefaultImageUrl;
 
+        var stockMap = await SafeGetStockBalancesAsync(new[] { variant.Id }, cancellationToken);
+        var (total, available) = stockMap.TryGetValue(variant.Id, out var b)
+            ? (b.TotalQuantity, b.AvailableQuantity)
+            : (0, 0);
+
         return new VariantDetailDto(
             variant.Id,
             variant.ProductId,
@@ -1558,7 +1669,12 @@ public sealed class ProductService : IProductService
             variant.Attributes.Select(a => new ProductVariantAttributeDto(a.AttrName, a.AttrValue)).ToList(),
             primaryImageUrl,
             vImages,
-            variant.WeightGrams ?? variant.Product?.WeightGrams
+            variant.WeightGrams ?? variant.Product?.WeightGrams,
+            variant.LengthCm ?? variant.Product?.LengthCm,
+            variant.WidthCm ?? variant.Product?.WidthCm,
+            variant.HeightCm ?? variant.Product?.HeightCm,
+            total,
+            available
         );
     }
 
@@ -2229,22 +2345,34 @@ public sealed class ProductService : IProductService
             })
             .ToListAsync(cancellationToken);
 
-        var items = rows.Select(r => new SellerProductListItemDto(
-            r.Id,
-            r.Name,
-            r.Brand,
-            r.CategoryId,
-            r.CategoryName,
-            r.SaleType.ToString(),
-            r.Status.ToString(),
-            r.StatusReason?.ToString(),
-            r.MinPrice,
-            r.MaxPrice,
-            r.PrimaryImageUrl,
-            r.VariantCount,
-            r.HasOrder,
-            r.CreatedAt,
-            r.PublishedAt)).ToList();
+        var productStock = await LoadStockForProductsAsync(
+            rows.Select(r => r.Id).ToList(),
+            activeVariantsOnly: false,
+            cancellationToken);
+
+        var items = rows.Select(r =>
+        {
+            var (total, available, reserved) = productStock.TryGetValue(r.Id, out var s) ? s : (0, 0, 0);
+            return new SellerProductListItemDto(
+                r.Id,
+                r.Name,
+                r.Brand,
+                r.CategoryId,
+                r.CategoryName,
+                r.SaleType.ToString(),
+                r.Status.ToString(),
+                r.StatusReason?.ToString(),
+                r.MinPrice,
+                r.MaxPrice,
+                r.PrimaryImageUrl,
+                r.VariantCount,
+                r.HasOrder,
+                r.CreatedAt,
+                r.PublishedAt,
+                total,
+                available,
+                reserved);
+        }).ToList();
 
         return new PagedData<SellerProductListItemDto>(items, PaginationMetadata.Create(safePage, safePageSize, totalCount));
     }
@@ -2348,6 +2476,27 @@ public sealed class ProductService : IProductService
             }
         }
 
+        var skuIds = variantDtos.Select(v => v.VariantId).Distinct().ToList();
+        var stockMap = await SafeGetStockBalancesAsync(skuIds, cancellationToken);
+
+        var enrichedVariants = variantDtos.Select(v =>
+        {
+            var (total, available, reserved) = stockMap.TryGetValue(v.VariantId, out var b)
+                ? (b.TotalQuantity, b.AvailableQuantity, b.ReservedQuantity)
+                : (0, 0, 0);
+
+            return v with
+            {
+                TotalQuantity = total,
+                AvailableQuantity = available,
+                ReservedQuantity = reserved
+            };
+        }).ToList();
+
+        var productTotal = enrichedVariants.Sum(v => v.TotalQuantity);
+        var productAvailable = enrichedVariants.Sum(v => v.AvailableQuantity);
+        var productReserved = enrichedVariants.Sum(v => v.ReservedQuantity);
+
         return new SellerProductDetailDto(
             product.Id,
             product.SellerId,
@@ -2365,9 +2514,15 @@ public sealed class ProductService : IProductService
             product.UpdatedAt,
             product.PublishedAt,
             productImages,
-            variantDtos,
+            enrichedVariants,
             product.WeightGrams,
-            rejectionReason);
+            rejectionReason,
+            product.LengthCm,
+            product.WidthCm,
+            product.HeightCm,
+            productTotal,
+            productAvailable,
+            productReserved);
     }
 
     // -------------------------------------------------------------
@@ -2933,22 +3088,34 @@ public sealed class ProductService : IProductService
             })
             .ToListAsync(cancellationToken);
 
-        var items = rows.Select(r => new AdminProductListItemDto(
-            r.Id,
-            r.SellerId,
-            r.CategoryId,
-            r.CategoryName,
-            r.Name,
-            r.Brand,
-            r.SaleType,
-            r.Status,
-            r.StatusReason,
-            r.MinPrice,
-            r.MaxPrice,
-            r.PrimaryImageUrl,
-            r.CreatedAt,
-            r.PublishedAt
-        )).ToList();
+        var productStock = await LoadStockForProductsAsync(
+            rows.Select(r => r.Id).ToList(),
+            activeVariantsOnly: false,
+            cancellationToken);
+
+        var items = rows.Select(r =>
+        {
+            var (total, available, reserved) = productStock.TryGetValue(r.Id, out var s) ? s : (0, 0, 0);
+            return new AdminProductListItemDto(
+                r.Id,
+                r.SellerId,
+                r.CategoryId,
+                r.CategoryName,
+                r.Name,
+                r.Brand,
+                r.SaleType,
+                r.Status,
+                r.StatusReason,
+                r.MinPrice,
+                r.MaxPrice,
+                r.PrimaryImageUrl,
+                r.CreatedAt,
+                r.PublishedAt,
+                total,
+                available,
+                reserved
+            );
+        }).ToList();
 
         return new PagedData<AdminProductListItemDto>(items, PaginationMetadata.Create(safePage, safePageSize, totalCount));
     }
