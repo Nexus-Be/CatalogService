@@ -7,11 +7,11 @@
 > **Quy chuẩn định tuyến:** 100% danh từ số nhiều `/api/v1/<plural>`, trả về DTO thuần túy, Zero ResultFilter (Gateway tự động bọc envelope outer).  
 > **Quy chuẩn lỗi:** RFC 9110 ProblemDetails (`application/problem+json`), mã lỗi `SCREAMING_SNAKE_CASE`, thông điệp tiếng Anh 100% `Sentence case`.  
 > **Quy chuẩn Enum:** Lưu Database dạng `integer` (int32), tuần tự hóa REST JSON dạng `PascalCase` string.  
-> **Hướng dẫn tích hợp cho Frontend:** Xem tài liệu chuẩn chỉ dành riêng cho FE tại [`FE_INTEGRATION_GUIDE.md`](FE_INTEGRATION_GUIDE.md).
+> **Hướng dẫn tích hợp cho Frontend:** Xem tài liệu chuẩn chỉ dành riêng cho FE tại [`FE_INTEGRATION_GUIDE.md`](FE_INTEGRATION_GUIDE.md) và thông báo bàn giao tích hợp tồn kho tại [`FE_INVENTORY_INTEGRATION_HANDOVER.md`](FE_INVENTORY_INTEGRATION_HANDOVER.md).
 
 ---
 
-## 📌 MỤC LỤC DANH SÁCH 53 ENDPOINTS
+## 📌 MỤC LỤC DANH SÁCH 54 ENDPOINTS
 
 | STT | Phương thức | Endpoint Route | Controller & Action | Nhóm nghiệp vụ |
 | :---: | :---: | :--- | :--- | :--- |
@@ -68,6 +68,7 @@
 | **51** | `POST` | `/api/v1/internal/purchases` | `InternalPurchasesController.SyncPurchase` | Đồng bộ Đơn mua (CAT-66) |
 | **52** | `GET` | `/api/v1/internal/audit-logs/unsynced` | `InternalAuditLogsController.GetUnsynced` | Nhật ký Kiểm toán (CAT-67) |
 | **53** | `POST` | `/api/v1/internal/audit-logs/mark-synced` | `InternalAuditLogsController.MarkSynced` | Nhật ký Kiểm toán (CAT-68) |
+| **54** | `GET` | `/api/v1/seller/products/suggest-sku` | `SellerProductsController.SuggestSku` | Phân hệ Sản phẩm (CAT-69 / SKU Generation) |
 
 ---
 

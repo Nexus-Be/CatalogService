@@ -111,4 +111,24 @@ public class SellerProductsController : ControllerBase
         var result = await _productService.SearchSellerAuctionsAsync(currentUserId, query, ct);
         return Ok(result);
     }
+
+    /// <summary>Generates a guaranteed unique SKU code for the authenticated seller based on product and variant name.</summary>
+    [HttpGet("suggest-sku")]
+    [RequireRole("seller", "admin")]
+    [ProducesResponseType(typeof(SuggestSkuResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> SuggestSku(
+        [FromQuery] string? name = null,
+        [FromQuery] string? variantName = null,
+        CancellationToken ct = default)
+    {
+        if (!this.TryGetUserId(out var currentUserId, out var errorResult))
+        {
+            return errorResult;
+        }
+
+        var result = await _productService.SuggestSkuAsync(currentUserId, name, variantName, ct);
+        return Ok(result);
+    }
 }

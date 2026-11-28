@@ -119,6 +119,12 @@ public interface IProductService
         Guid sellerId,
         CancellationToken cancellationToken = default);
 
+    Task<SuggestSkuResponse> SuggestSkuAsync(
+        Guid currentUserId,
+        string? productName,
+        string? variantName,
+        CancellationToken cancellationToken = default);
+
     // Internal Batch APIs (CAT-24, CAT-39)
     Task<BatchVariantResponse> GetVariantsBatchAsync(
         BatchGetVariantsRequest request,

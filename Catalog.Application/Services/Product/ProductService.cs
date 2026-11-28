@@ -635,33 +635,49 @@ public sealed class ProductService : IProductService
                 throw new BusinessRuleValidationException("MAX_VARIANTS_REACHED", "A product cannot exceed 10 variants.");
             }
 
-            if (request.Variants.Any(v => string.IsNullOrWhiteSpace(v.SkuCode)))
-            {
-                throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Sku code is required for all regular product variants.");
-            }
-
-            var requestedSkus = request.Variants.Select(v => v.SkuCode.Trim().ToLower()).ToList();
-            if (requestedSkus.Distinct().Count() != requestedSkus.Count)
-            {
-                throw new BusinessRuleValidationException("DUPLICATE_SKU", "Duplicate SKU code within the variants list.", 409);
-            }
-
-            var existingSku = await _dbContext.ProductVariants
-                .AsNoTracking()
-                .Where(v => !v.IsDeleted 
-                         && v.Product != null && v.Product.SellerId == request.SellerId 
-                         && requestedSkus.Contains(v.SkuCode.ToLower()))
-                .Select(v => v.SkuCode)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (existingSku != null)
-            {
-                throw new BusinessRuleValidationException("DUPLICATE_SKU", $"Sku code '{existingSku}' already exists in your shop.", 409);
-            }
+            var preparedVariants = new List<(CreateVariantRequest Request, string SkuCode)>();
+            var requestedCustomSkus = new List<string>();
 
             for (int i = 0; i < request.Variants.Count; i++)
             {
                 var v = request.Variants[i];
+                string sku;
+                if (!string.IsNullOrWhiteSpace(v.SkuCode))
+                {
+                    sku = v.SkuCode.Trim();
+                    var norm = sku.ToLowerInvariant();
+                    if (requestedCustomSkus.Contains(norm))
+                    {
+                        throw new BusinessRuleValidationException("DUPLICATE_SKU", "Duplicate SKU code within the variants list.", 409);
+                    }
+                    requestedCustomSkus.Add(norm);
+                }
+                else
+                {
+                    sku = await GenerateUniqueSkuAsync(request.SellerId, trimmedName, v.Name, i, cancellationToken);
+                }
+                preparedVariants.Add((v, sku));
+            }
+
+            if (requestedCustomSkus.Count > 0)
+            {
+                var existingSku = await _dbContext.ProductVariants
+                    .AsNoTracking()
+                    .Where(v => !v.IsDeleted 
+                             && v.Product != null && v.Product.SellerId == request.SellerId 
+                             && requestedCustomSkus.Contains(v.SkuCode.ToLower()))
+                    .Select(v => v.SkuCode)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (existingSku != null)
+                {
+                    throw new BusinessRuleValidationException("DUPLICATE_SKU", $"Sku code '{existingSku}' already exists in your shop.", 409);
+                }
+            }
+
+            for (int i = 0; i < preparedVariants.Count; i++)
+            {
+                var (v, sku) = preparedVariants[i];
                 if (!v.Price.HasValue || v.Price.Value <= 0)
                 {
                     throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Price must be greater than 0 for all regular product variants.");
@@ -669,22 +685,22 @@ public sealed class ProductService : IProductService
 
                 if (v.WeightGrams.HasValue && v.WeightGrams.Value <= 0)
                 {
-                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"WeightGrams for variant '{v.SkuCode}' must be greater than 0.");
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"WeightGrams for variant '{sku}' must be greater than 0.");
                 }
 
                 if (v.LengthCm.HasValue && v.LengthCm.Value <= 0)
                 {
-                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"LengthCm for variant '{v.SkuCode}' must be greater than 0.");
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"LengthCm for variant '{sku}' must be greater than 0.");
                 }
 
                 if (v.WidthCm.HasValue && v.WidthCm.Value <= 0)
                 {
-                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"WidthCm for variant '{v.SkuCode}' must be greater than 0.");
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"WidthCm for variant '{sku}' must be greater than 0.");
                 }
 
                 if (v.HeightCm.HasValue && v.HeightCm.Value <= 0)
                 {
-                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"HeightCm for variant '{v.SkuCode}' must be greater than 0.");
+                    throw new BusinessRuleValidationException("VAL_INVALID_INPUT", $"HeightCm for variant '{sku}' must be greater than 0.");
                 }
 
                 var variant = new ProductVariant
@@ -692,7 +708,7 @@ public sealed class ProductService : IProductService
                     Id = Guid.NewGuid(),
                     ProductId = product.Id,
                     SellerId = request.SellerId,
-                    SkuCode = v.SkuCode.Trim(),
+                    SkuCode = sku,
                     Name = string.IsNullOrWhiteSpace(v.Name) ? product.Name : v.Name.Trim(),
                     Price = v.Price,
                     Currency = string.IsNullOrWhiteSpace(v.Currency) ? "VND" : v.Currency.Trim().ToUpperInvariant(),
@@ -1819,13 +1835,17 @@ public sealed class ProductService : IProductService
             throw new BusinessRuleValidationException("MAX_VARIANTS_REACHED", "A product cannot exceed 10 variants.");
         }
 
-        var sku = request.SkuCode?.Trim();
-        if (string.IsNullOrWhiteSpace(sku))
+        string sku;
+        if (!string.IsNullOrWhiteSpace(request.SkuCode))
         {
-            throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Sku code is required.");
+            sku = request.SkuCode.Trim();
+            await EnsureUniqueSkuInShopAsync(currentUserId, sku, null, cancellationToken);
         }
-
-        await EnsureUniqueSkuInShopAsync(currentUserId, sku, null, cancellationToken);
+        else
+        {
+            var nextIndex = product.Variants.Count(v => !v.IsDeleted);
+            sku = await GenerateUniqueSkuAsync(currentUserId, product.Name, request.Name, nextIndex, cancellationToken);
+        }
 
         if (!request.Price.HasValue || request.Price.Value <= 0)
         {
@@ -1861,7 +1881,7 @@ public sealed class ProductService : IProductService
             ProductId = productId,
             SellerId = currentUserId,
             SkuCode = sku,
-            Name = request.Name.Trim(),
+            Name = string.IsNullOrWhiteSpace(request.Name) ? product.Name : request.Name.Trim(),
             Price = request.Price,
             Currency = string.IsNullOrWhiteSpace(request.Currency) ? "VND" : request.Currency.Trim().ToUpperInvariant(),
             IsActive = !hasActiveDefault,
@@ -3762,4 +3782,94 @@ public sealed class ProductService : IProductService
 
     private static string GenerateAuctionSku() =>
         $"AUC-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+
+    public async Task<SuggestSkuResponse> SuggestSkuAsync(
+        Guid currentUserId,
+        string? productName,
+        string? variantName,
+        CancellationToken cancellationToken = default)
+    {
+        if (currentUserId == Guid.Empty)
+        {
+            throw new BusinessRuleValidationException("UNAUTHORIZED", "User must be authenticated.");
+        }
+
+        var sku = await GenerateUniqueSkuAsync(currentUserId, productName, variantName, 0, cancellationToken);
+        return new SuggestSkuResponse(sku);
+    }
+
+    private async Task<string> GenerateUniqueSkuAsync(
+        Guid sellerId,
+        string? productName,
+        string? variantName,
+        int index,
+        CancellationToken cancellationToken)
+    {
+        var pToken = CleanSlugToken(productName, 3, "NEX");
+        var vToken = CleanSlugToken(variantName, 2, $"V{index + 1}");
+
+        for (int attempt = 0; attempt < 10; attempt++)
+        {
+            var suffix = Guid.NewGuid().ToString("N")[..4].ToUpperInvariant();
+            var candidate = $"{pToken}-{vToken}-{suffix}";
+            if (candidate.Length > 48)
+            {
+                candidate = candidate[..48];
+            }
+
+            var normalized = candidate.ToLowerInvariant();
+            var exists = await _dbContext.ProductVariants
+                .AsNoTracking()
+                .AnyAsync(v => !v.IsDeleted
+                            && (v.SellerId == sellerId || (v.Product != null && v.Product.SellerId == sellerId))
+                            && v.SkuCode.ToLower() == normalized, cancellationToken);
+
+            if (!exists)
+            {
+                return candidate;
+            }
+        }
+
+        return $"SKU-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+    }
+
+    private static string CleanSlugToken(string? text, int maxWords, string defaultToken)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return defaultToken;
+        }
+
+        var normalizedString = text.Normalize(System.Text.NormalizationForm.FormD);
+        var stringBuilder = new System.Text.StringBuilder();
+        foreach (var c in normalizedString)
+        {
+            var unicodeCategory = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
+            if (unicodeCategory != System.Globalization.UnicodeCategory.NonSpacingMark)
+            {
+                if (c == 'đ' || c == 'Đ')
+                {
+                    stringBuilder.Append('D');
+                }
+                else if (char.IsLetterOrDigit(c))
+                {
+                    stringBuilder.Append(char.ToUpperInvariant(c));
+                }
+                else
+                {
+                    stringBuilder.Append('-');
+                }
+            }
+        }
+
+        var cleaned = System.Text.RegularExpressions.Regex.Replace(stringBuilder.ToString(), "-+", "-").Trim('-');
+        if (string.IsNullOrWhiteSpace(cleaned))
+        {
+            return defaultToken;
+        }
+
+        var tokens = cleaned.Split('-', StringSplitOptions.RemoveEmptyEntries);
+        var result = string.Join("-", tokens.Take(maxWords));
+        return string.IsNullOrWhiteSpace(result) ? defaultToken : result;
+    }
 }

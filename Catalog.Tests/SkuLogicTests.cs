@@ -82,25 +82,74 @@ public sealed class SkuLogicTests
     }
 
     [Fact]
-    public async Task CreateProduct_BlankSku_ThrowsValidationError()
+    public async Task CreateProduct_BlankSku_GeneratesUniqueSkuCode()
     {
         await using var db = CreateDb();
         var categoryId = await SeedCategoryAsync(db);
+        var seller = Guid.NewGuid();
         var service = CreateService(db);
 
-        var ex = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
-            service.CreateAsync(new CreateProductRequest(
-                SellerId: Guid.NewGuid(),
-                CategoryId: categoryId,
-                Name: "Blank SKU Item",
-                SaleType: SaleType.Regular,
-                Variants: new List<CreateVariantRequest>
-                {
-                    new("   ", "Default", 50000m)
-                },
-                WeightGrams: 100)));
+        var product = await service.CreateAsync(new CreateProductRequest(
+            SellerId: seller,
+            CategoryId: categoryId,
+            Name: "Gối ôm công thái học",
+            SaleType: SaleType.Regular,
+            Variants: new List<CreateVariantRequest>
+            {
+                new("   ", "Màu xám", 50000m),
+                new(null, "Màu xanh", 60000m)
+            },
+            WeightGrams: 100));
 
-        Assert.Equal("VAL_INVALID_INPUT", ex.ErrorCode);
+        var detail = await service.GetInternalProductDetailAsync(product.Id);
+        Assert.NotNull(detail);
+        Assert.Equal(2, detail.Variants.Count);
+        Assert.All(detail.Variants, v => Assert.False(string.IsNullOrWhiteSpace(v.SkuCode)));
+        Assert.Contains("GOI-OM", detail.Variants[0].SkuCode);
+        Assert.NotEqual(detail.Variants[0].SkuCode, detail.Variants[1].SkuCode);
+    }
+
+    [Fact]
+    public async Task AddVariant_BlankSku_GeneratesUniqueSkuCode()
+    {
+        await using var db = CreateDb();
+        var categoryId = await SeedCategoryAsync(db);
+        var seller = Guid.NewGuid();
+        var service = CreateService(db);
+
+        var product = await service.CreateAsync(new CreateProductRequest(
+            SellerId: seller,
+            CategoryId: categoryId,
+            Name: "Bàn phím cơ",
+            SaleType: SaleType.Regular,
+            Variants: new List<CreateVariantRequest>
+            {
+                new("KB-01", "Switch Red", 50000m)
+            },
+            WeightGrams: 500));
+
+        var variant = await service.AddVariantAsync(product.Id, seller, new CreateVariantRequest(
+            SkuCode: null,
+            Name: "Switch Blue",
+            Price: 55000m));
+
+        Assert.NotNull(variant);
+        Assert.False(string.IsNullOrWhiteSpace(variant.SkuCode));
+        Assert.Contains("BAN-PHIM", variant.SkuCode);
+        Assert.NotEqual("KB-01", variant.SkuCode);
+    }
+
+    [Fact]
+    public async Task SuggestSku_GeneratesUniqueSkuCode()
+    {
+        await using var db = CreateDb();
+        var seller = Guid.NewGuid();
+        var service = CreateService(db);
+
+        var response = await service.SuggestSkuAsync(seller, "Tai nghe không dây", "Màu đen");
+        Assert.NotNull(response);
+        Assert.False(string.IsNullOrWhiteSpace(response.SkuCode));
+        Assert.Contains("TAI-NGHE", response.SkuCode);
     }
 
     [Fact]
