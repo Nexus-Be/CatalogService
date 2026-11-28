@@ -20,3 +20,5 @@ public sealed record ReserveStockResponse(
 public sealed record MarkOrderedResponse(
     int UpdatedCount,
     System.Collections.Generic.IReadOnlyList<Guid> UpdatedVariantIds);
+
+public sealed record SuggestSkuResponse(string SkuCode);

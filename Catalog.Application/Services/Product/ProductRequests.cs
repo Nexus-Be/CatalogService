@@ -65,8 +65,8 @@ public sealed record ProductListQuery(
 public sealed record CreateVariantAttributeRequest(string AttrName, string AttrValue);
 
 public sealed record CreateVariantRequest(
-    string SkuCode,
-    string Name,
+    string? SkuCode = null,
+    string? Name = null,
     decimal? Price = null,
     string? Currency = "VND",
     List<CreateVariantAttributeRequest>? Attributes = null,
