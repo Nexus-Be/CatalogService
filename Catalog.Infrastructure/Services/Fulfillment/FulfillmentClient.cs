@@ -197,4 +197,51 @@ public sealed class FulfillmentClient : IFulfillmentClient
 
         return await InitializeInventoryForSkuAsync(request.SkuId, Guid.Empty, request.InitialQuantity, cancellationToken);
     }
+
+    public async Task<IReadOnlyDictionary<Guid, SkuStockBalanceDto>> GetStockBalancesAsync(
+        IReadOnlyList<Guid> skuIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (skuIds == null || skuIds.Count == 0)
+        {
+            return new Dictionary<Guid, SkuStockBalanceDto>();
+        }
+
+        var distinctSkuIds = skuIds.Where(id => id != Guid.Empty).Distinct().ToList();
+        if (distinctSkuIds.Count == 0)
+        {
+            return new Dictionary<Guid, SkuStockBalanceDto>();
+        }
+
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync("api/v1/internal/inventories/batch-get", distinctSkuIds, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var items = await response.Content.ReadFromJsonAsync<List<InventoryClientResponse>>(JsonOptions, cancellationToken);
+                if (items == null || items.Count == 0)
+                {
+                    return new Dictionary<Guid, SkuStockBalanceDto>();
+                }
+
+                return items
+                    .GroupBy(i => i.SkuId)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => new SkuStockBalanceDto(
+                            g.Key,
+                            g.Sum(x => Math.Max(0, x.TotalQuantity)),
+                            g.Sum(x => Math.Max(0, x.AvailableQuantity)),
+                            g.Sum(x => Math.Max(0, x.ReservedQuantity))));
+            }
+
+            _logger.LogWarning("[REST Internal Fulfillment] GetStockBalancesAsync failed with status {StatusCode}.", response.StatusCode);
+            return new Dictionary<Guid, SkuStockBalanceDto>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[REST Internal Fulfillment] Connection or deserialization error when querying batch stock balances for {Count} SKUs.", distinctSkuIds.Count);
+            return new Dictionary<Guid, SkuStockBalanceDto>();
+        }
+    }
 }

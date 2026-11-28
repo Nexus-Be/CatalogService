@@ -266,5 +266,9 @@ public sealed class ProductInventoryInitializerTests
 
         public Task<InventoryClientResponse?> InitializeInventoryAsync(InitializeInventoryClientRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<IReadOnlyDictionary<Guid, SkuStockBalanceDto>> GetStockBalancesAsync(
+            IReadOnlyList<Guid> skuIds, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, SkuStockBalanceDto>>(new Dictionary<Guid, SkuStockBalanceDto>());
     }
 }

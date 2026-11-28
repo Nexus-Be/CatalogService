@@ -31,7 +31,9 @@ public sealed record ProductListItemDto(
     decimal? MinPrice,
     decimal? MaxPrice,
     string? PrimaryImageUrl,
-    decimal? AvgRating);
+    decimal? AvgRating,
+    int TotalQuantity = 0,
+    int AvailableQuantity = 0);
 
 public sealed record ProductVariantAttributeDto(string AttrName, string AttrValue);
 
@@ -48,7 +50,9 @@ public sealed record ProductDetailVariantDto(
     int? WeightGrams = null,
     int? LengthCm = null,
     int? WidthCm = null,
-    int? HeightCm = null)
+    int? HeightCm = null,
+    int TotalQuantity = 0,
+    int AvailableQuantity = 0)
 {
     public ProductDetailVariantDto(
         Guid variantId,
@@ -60,7 +64,23 @@ public sealed record ProductDetailVariantDto(
         IReadOnlyList<ProductVariantAttributeDto> attributes,
         string? primaryImageUrl,
         IReadOnlyList<ProductImageDto>? images)
-        : this(variantId, skuCode, name, price, status, isActive, attributes, primaryImageUrl, images, null, null, null, null) { }
+        : this(variantId, skuCode, name, price, status, isActive, attributes, primaryImageUrl, images, null, null, null, null, 0, 0) { }
+
+    public ProductDetailVariantDto(
+        Guid variantId,
+        string skuCode,
+        string name,
+        decimal? price,
+        string status,
+        bool isActive,
+        IReadOnlyList<ProductVariantAttributeDto> attributes,
+        string? primaryImageUrl,
+        IReadOnlyList<ProductImageDto>? images,
+        int? weightGrams,
+        int? lengthCm,
+        int? widthCm,
+        int? heightCm)
+        : this(variantId, skuCode, name, price, status, isActive, attributes, primaryImageUrl, images, weightGrams, lengthCm, widthCm, heightCm, 0, 0) { }
 }
 
 public sealed record ProductDetailImageDto(
@@ -98,7 +118,9 @@ public sealed record ProductDetailDto(
     int? WeightGrams = null,
     int? LengthCm = null,
     int? WidthCm = null,
-    int? HeightCm = null)
+    int? HeightCm = null,
+    int TotalQuantity = 0,
+    int AvailableQuantity = 0)
 {
     public ProductDetailDto(
         Guid productId,
@@ -114,7 +136,7 @@ public sealed record ProductDetailDto(
         IReadOnlyList<ProductDetailVariantDto> variants,
         IReadOnlyList<ProductDetailImageDto> images,
         ProductDetailRatingDto rating)
-        : this(productId, sellerId, name, description, brand, saleType, status, specifications, publishedAt, category, variants, images, rating, null, null, null, null) { }
+        : this(productId, sellerId, name, description, brand, saleType, status, specifications, publishedAt, category, variants, images, rating, null, null, null, null, 0, 0) { }
 }
 
 public sealed record ProductImageDto(
@@ -146,7 +168,9 @@ public sealed record VariantDetailDto(
     int? WeightGrams = null,
     int? LengthCm = null,
     int? WidthCm = null,
-    int? HeightCm = null);
+    int? HeightCm = null,
+    int TotalQuantity = 0,
+    int AvailableQuantity = 0);
 
 public sealed record SellerProductListItemDto(
     Guid ProductId,
@@ -163,7 +187,10 @@ public sealed record SellerProductListItemDto(
     int VariantCount,
     bool HasOrder,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? PublishedAt);
+    DateTimeOffset? PublishedAt,
+    int TotalQuantity = 0,
+    int AvailableQuantity = 0,
+    int ReservedQuantity = 0);
 
 public sealed record SellerProductVariantDto(
     Guid VariantId,
@@ -181,7 +208,10 @@ public sealed record SellerProductVariantDto(
     string InventoryInitState = "NotRequired",
     int? LengthCm = null,
     int? WidthCm = null,
-    int? HeightCm = null);
+    int? HeightCm = null,
+    int TotalQuantity = 0,
+    int AvailableQuantity = 0,
+    int ReservedQuantity = 0);
 
 public sealed record SellerProductDetailDto(
     Guid ProductId,
@@ -205,7 +235,10 @@ public sealed record SellerProductDetailDto(
     string? RejectionReason = null,
     int? LengthCm = null,
     int? WidthCm = null,
-    int? HeightCm = null);
+    int? HeightCm = null,
+    int TotalQuantity = 0,
+    int AvailableQuantity = 0,
+    int ReservedQuantity = 0);
 
 public sealed record BatchVariantItemDto(
     Guid VariantId,
@@ -279,4 +312,7 @@ public sealed record AdminProductListItemDto(
     decimal? MaxPrice,
     string? PrimaryImageUrl,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? PublishedAt);
+    DateTimeOffset? PublishedAt,
+    int TotalQuantity = 0,
+    int AvailableQuantity = 0,
+    int ReservedQuantity = 0);
